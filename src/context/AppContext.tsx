@@ -151,9 +151,15 @@ function appReducer(state: AppState, action: Action): AppState {
       return { ...state, members: action.payload };
 
     case 'ADD_MEMBER':
+      if (isSupabaseConfigured() && supabase) {
+        supabase.from('members').upsert([action.payload]).then();
+      }
       return { ...state, members: [...state.members, action.payload] };
 
     case 'UPDATE_MEMBER':
+      if (isSupabaseConfigured() && supabase) {
+        supabase.from('members').upsert([action.payload]).then();
+      }
       return {
         ...state,
         members: state.members.map((m) =>
@@ -162,6 +168,10 @@ function appReducer(state: AppState, action: Action): AppState {
       };
 
     case 'DELETE_MEMBER':
+      if (isSupabaseConfigured() && supabase) {
+        supabase.from('members').delete().eq('id', action.payload).then();
+        supabase.from('records').delete().eq('member_id', action.payload).then();
+      }
       return {
         ...state,
         members: state.members.filter((m) => m.id !== action.payload),
@@ -172,9 +182,15 @@ function appReducer(state: AppState, action: Action): AppState {
       return { ...state, sessions: action.payload };
 
     case 'ADD_SESSION':
+      if (isSupabaseConfigured() && supabase) {
+        supabase.from('sessions').upsert([action.payload]).then();
+      }
       return { ...state, sessions: [action.payload, ...state.sessions] };
 
     case 'UPDATE_SESSION':
+      if (isSupabaseConfigured() && supabase) {
+        supabase.from('sessions').upsert([action.payload]).then();
+      }
       return {
         ...state,
         sessions: state.sessions.map((s) =>
@@ -183,6 +199,10 @@ function appReducer(state: AppState, action: Action): AppState {
       };
 
     case 'DELETE_SESSION':
+      if (isSupabaseConfigured() && supabase) {
+        supabase.from('sessions').delete().eq('id', action.payload).then();
+        supabase.from('records').delete().eq('session_id', action.payload).then();
+      }
       return {
         ...state,
         sessions: state.sessions.filter((s) => s.id !== action.payload),
@@ -193,6 +213,9 @@ function appReducer(state: AppState, action: Action): AppState {
     case 'SAVE_ATTENDANCE': {
       const { records: newRecords, auditReason } = action.payload;
       if (newRecords.length === 0) return state;
+      if (isSupabaseConfigured() && supabase) {
+        supabase.from('records').upsert(newRecords).then();
+      }
 
       const sessionId = newRecords[0].session_id;
       const targetSession = state.sessions.find((s) => s.id === sessionId);
@@ -411,7 +434,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, undefined, initializeState);
 
   // Persistence to localStorage
-  // Cloud synchronization with Supabase when configured
+  // Cloud synchronization with Supabase (real-time & multi-device sync)
   useEffect(() => {
     if (!isSupabaseConfigured() || !supabase) return;
 
@@ -430,6 +453,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           }
           if (memRes.data && memRes.data.length > 0) {
             dispatch({ type: 'SET_MEMBERS', payload: memRes.data });
+          } else if (state.members.length > 0) {
+            // Seed cloud database with initial 9 core leads
+            supabase.from('members').upsert(state.members).then();
           }
           if (recRes.data && recRes.data.length > 0) {
             dispatch({
@@ -444,8 +470,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
 
     syncFromCloud();
+
+    // Auto-sync when window gains focus or on a short background interval
+    const handleFocus = () => syncFromCloud();
+    window.addEventListener('focus', handleFocus);
+    const interval = setInterval(syncFromCloud, 12000);
+
     return () => {
       isMounted = false;
+      window.removeEventListener('focus', handleFocus);
+      clearInterval(interval);
     };
   }, []);
 
