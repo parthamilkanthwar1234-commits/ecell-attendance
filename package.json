@@ -1,0 +1,39 @@
+{
+  "name": "ecell-attendance",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.118.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "date-fns": "^4.4.0",
+    "lucide-react": "^1.61.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-hot-toast": "^2.6.1",
+    "react-router-dom": "^7.18.4",
+    "recharts": "^3.10.1",
+    "tailwindcss": "^4.3.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/react-router-dom": "^5.3.3",
+    "@vitejs/plugin-react": "^4.7.0",
+    "autoprefixer": "^10.6.1",
+    "oxlint": "^1.88.0",
+    "postcss": "^8.5.31",
+    "typescript": "~5.7.2",
+    "vite": "^6.4.5"
+  },
+  "optionalDependencies": {
+    "@rolldown/binding-win32-x64-msvc": "^1.2.15"
+  }
+}
