@@ -21,10 +21,25 @@ import {
   generateAttendanceRecords,
   generateDefaultSettings
 } from '../lib/demoData';
+import {
+  isSupabaseConfigured,
+  configureSupabaseKeys,
+  clearSupabaseKeys
+} from '../lib/supabase';
 
 export default function Settings() {
   const { state, dispatch, addToast, isMasterAdmin } = useApp();
   const { settings } = state;
+
+  const [sbUrl, setSbUrl] = useState(() => localStorage.getItem('ecell_supabase_url') || '');
+  const [sbKey, setSbKey] = useState(() => localStorage.getItem('ecell_supabase_key') || '');
+
+  // Form state
+  const [formData, setFormData] = useState<AppSettings>({
+    ...settings,
+  });
+
+  const [newDomain, setNewDomain] = useState('');
 
   if (!isMasterAdmin()) {
     return (
@@ -38,12 +53,22 @@ export default function Settings() {
     );
   }
 
-  // Form state
-  const [formData, setFormData] = useState<AppSettings>({
-    ...settings,
-  });
-
-  const [newDomain, setNewDomain] = useState('');
+  const handleSaveCloudDb = () => {
+    if (!sbUrl.trim() || !sbKey.trim()) {
+      addToast({
+        type: 'error',
+        title: 'Validation Error',
+        message: 'Both Supabase Project URL and Anon Key are required.',
+      });
+      return;
+    }
+    configureSupabaseKeys(sbUrl, sbKey);
+    addToast({
+      type: 'success',
+      title: 'Cloud Database Connected',
+      message: 'Supabase credentials saved. Multi-device sync is now active.',
+    });
+  };
 
   // Handle save
   const handleSaveSettings = (e: React.FormEvent) => {
@@ -153,6 +178,86 @@ export default function Settings() {
       </div>
 
       <form onSubmit={handleSaveSettings} className="space-y-6">
+        {/* Cloud Database & Multi-Device Sync */}
+        <div className="bg-dark-card border border-dark-border rounded-xl p-5 shadow-sm space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-dark-border">
+            <div className="flex items-center gap-2">
+              <Database className="h-5 w-5 text-accent-light" />
+              <div>
+                <h2 className="text-base font-bold text-white">Cloud Database & Multi-Device Sync</h2>
+                <p className="text-xs text-gray-400">
+                  Sync meetings, attendance, and member updates in real-time across all core leads' phones and laptops
+                </p>
+              </div>
+            </div>
+            <span
+              className={`text-xs px-2.5 py-1 rounded-full font-bold border ${
+                isSupabaseConfigured()
+                  ? 'bg-status-success/15 text-status-success border-status-success/30'
+                  : 'bg-status-late/15 text-status-late border-status-late/30'
+              }`}
+            >
+              {isSupabaseConfigured() ? 'Cloud Sync Active' : 'Local Storage Mode'}
+            </span>
+          </div>
+
+          {!isSupabaseConfigured() && (
+            <div className="p-3 bg-status-late/10 border border-status-late/20 rounded-lg text-xs text-status-late space-y-1">
+              <p className="font-semibold">Notice for Live Multi-Device Teams:</p>
+              <p className="text-gray-300">
+                In Local Storage Mode, meetings added on one lead's phone/computer remain on their device. To make all meetings and attendance instantly visible to Master Admin, President, GS, and all leads on every device worldwide, connect your free Supabase project below.
+              </p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">
+                Supabase Project URL
+              </label>
+              <input
+                type="text"
+                placeholder="https://xyzcompany.supabase.co"
+                value={sbUrl}
+                onChange={(e) => setSbUrl(e.target.value)}
+                className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white focus:outline-none focus:border-accent-primary font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">
+                Supabase Anon Public API Key
+              </label>
+              <input
+                type="password"
+                placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..."
+                value={sbKey}
+                onChange={(e) => setSbKey(e.target.value)}
+                className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white focus:outline-none focus:border-accent-primary font-mono"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 pt-2">
+            <button
+              type="button"
+              onClick={handleSaveCloudDb}
+              className="px-4 py-2 bg-accent-primary hover:bg-blue-600 text-white font-semibold text-xs rounded-lg cursor-pointer transition-colors shadow-sm"
+            >
+              {isSupabaseConfigured() ? 'Update Cloud Credentials' : 'Connect Cloud Database'}
+            </button>
+            {isSupabaseConfigured() && (
+              <button
+                type="button"
+                onClick={clearSupabaseKeys}
+                className="px-3 py-2 bg-status-absent/15 hover:bg-status-absent/25 text-status-absent font-semibold text-xs rounded-lg cursor-pointer transition-colors"
+              >
+                Disconnect Cloud
+              </button>
+            )}
+          </div>
+        </div>
+
         {/* Organization Identity */}
         <div className="bg-dark-card border border-dark-border rounded-xl p-5 shadow-sm space-y-4">
           <div className="flex items-center gap-2 pb-3 border-b border-dark-border">

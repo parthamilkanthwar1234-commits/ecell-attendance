@@ -14,11 +14,13 @@ import {
   AlertCircle,
   LayoutGrid,
   List,
-  Filter
+  Filter,
+  Users,
+  FileSpreadsheet
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { AttendanceSession, SessionType, ECellDomain, SessionStatus } from '../types';
-import { formatDate, generateId } from '../lib/utils';
+import { formatDate, generateId, getStatusBgColor, getStatusLabel } from '../lib/utils';
 import Modal from '../components/ui/Modal';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 
@@ -72,6 +74,17 @@ export default function MeetingsEvents() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingSession, setEditingSession] = useState<AttendanceSession | null>(null);
   const [sessionToDelete, setSessionToDelete] = useState<AttendanceSession | null>(null);
+  const [selectedAttendanceSession, setSelectedAttendanceSession] = useState<AttendanceSession | null>(null);
+
+  const sessionAttendanceRecords = useMemo(() => {
+    if (!selectedAttendanceSession) return [];
+    const sessRecords = records.filter((r) => r.session_id === selectedAttendanceSession.id);
+    const memberMap = new Map(state.members.map((m) => [m.id, m]));
+    return sessRecords.map((r) => ({
+      ...r,
+      member: memberMap.get(r.member_id),
+    }));
+  }, [selectedAttendanceSession, records, state.members]);
 
   // Form State
   const defaultDomain: ECellDomain =
@@ -226,7 +239,8 @@ export default function MeetingsEvents() {
     const absent = sRecs.filter((r) => r.status === 'absent').length;
     const applicable = present + late + absent;
     const pct = applicable > 0 ? Math.round(((present + late) / applicable) * 100) : null;
-    return { present, late, absent, total: sRecs.length, pct };
+    const attended = present + late;
+    return { present, late, absent, attended, total: sRecs.length, pct };
   };
 
   return (
@@ -409,18 +423,25 @@ export default function MeetingsEvents() {
                   </div>
 
                   {/* Bottom Footer */}
-                  <div className="pt-3 border-t border-dark-border flex items-center justify-between text-xs">
+                  <div className="pt-3 border-t border-dark-border flex items-center justify-between text-xs gap-2">
                     {stats.total > 0 ? (
-                      <div className="flex items-center gap-1.5 font-semibold">
-                        <span className="text-gray-400">Attendance:</span>
-                        <span className="text-status-success font-bold">{stats.pct}%</span>
-                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedAttendanceSession(session);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-status-success/15 hover:bg-status-success/25 border border-status-success/30 text-status-success font-bold text-[11px] cursor-pointer transition-colors"
+                        title="Click to view meeting attendance sheet"
+                      >
+                        <Users className="h-3 w-3" />
+                        <span>{stats.pct}% ({stats.attended}/{stats.total})</span>
+                      </button>
                     ) : (
                       <span className="text-gray-500 text-[11px]">Attendance pending</span>
                     )}
 
                     <span className="inline-flex items-center gap-1 text-accent-light font-semibold text-[11px] group-hover:underline">
-                      <span>Session Details</span>
+                      <span>Details & MoM</span>
                       <ChevronRight className="h-3 w-3" />
                     </span>
                   </div>
@@ -471,7 +492,17 @@ export default function MeetingsEvents() {
                       <td className="p-3.5 text-gray-300">{session.session_type}</td>
                       <td className="p-3.5">
                         {stats.total > 0 ? (
-                          <span className="font-bold text-status-success">{stats.pct}%</span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedAttendanceSession(session);
+                            }}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-status-success/15 border border-status-success/30 text-status-success font-bold text-xs hover:bg-status-success/25 transition-colors cursor-pointer"
+                            title="Click to view full attendance sheet"
+                          >
+                            <Users className="h-3 w-3" />
+                            <span>{stats.pct}% ({stats.attended}/{stats.total})</span>
+                          </button>
                         ) : (
                           <span className="text-gray-500">Unrecorded</span>
                         )}
@@ -660,6 +691,87 @@ export default function MeetingsEvents() {
         confirmLabel="Delete Session"
         variant="danger"
       />
+
+      {/* Quick Attendance Sheet Modal (Accessible to Master Admin, President, GS, and Domain Leads) */}
+      {selectedAttendanceSession && (
+        <Modal
+          isOpen={!!selectedAttendanceSession}
+          onClose={() => setSelectedAttendanceSession(null)}
+          title={`Attendance Record: ${selectedAttendanceSession.name}`}
+          size="lg"
+        >
+          <div className="space-y-4">
+            <div className="p-3 bg-dark-bg rounded-xl border border-dark-border flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div>
+                <span className="text-gray-400 block font-mono text-[11px]">
+                  {formatDate(selectedAttendanceSession.date)} ({selectedAttendanceSession.start_time} - {selectedAttendanceSession.end_time})
+                </span>
+                <span className="font-bold text-accent-light">
+                  Domain: {selectedAttendanceSession.domain}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    navigate(`/sessions/${selectedAttendanceSession.id}`);
+                    setSelectedAttendanceSession(null);
+                  }}
+                  className="px-3 py-1.5 bg-accent-primary hover:bg-blue-600 text-white font-semibold rounded-lg text-xs cursor-pointer inline-flex items-center gap-1.5"
+                >
+                  <span>Full Session Page</span>
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="max-h-96 overflow-y-auto border border-dark-border rounded-xl">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-dark-bg text-gray-400 uppercase tracking-wider border-b border-dark-border sticky top-0">
+                  <tr>
+                    <th className="p-2.5 w-10 text-center">#</th>
+                    <th className="p-2.5">Member Name</th>
+                    <th className="p-2.5">Domain</th>
+                    <th className="p-2.5">Status</th>
+                    <th className="p-2.5">Remarks</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-dark-border">
+                  {sessionAttendanceRecords.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="p-6 text-center text-gray-500">
+                        No attendance records recorded for this session yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    sessionAttendanceRecords.map((item, idx) => (
+                      <tr key={item.id} className="hover:bg-dark-hover/40 transition-colors">
+                        <td className="p-2.5 text-center text-gray-500 font-mono">{idx + 1}</td>
+                        <td className="p-2.5 font-bold text-white">
+                          <div>{item.member?.name || item.marked_by_name}</div>
+                          <div className="text-[10px] text-gray-500 font-mono">
+                            {item.member?.member_id}
+                          </div>
+                        </td>
+                        <td className="p-2.5 text-gray-400">{item.member?.department || selectedAttendanceSession.domain}</td>
+                        <td className="p-2.5">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${getStatusBgColor(
+                              item.status
+                            )}`}
+                          >
+                            {getStatusLabel(item.status)}
+                          </span>
+                        </td>
+                        <td className="p-2.5 text-gray-400">{item.remarks || '-'}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

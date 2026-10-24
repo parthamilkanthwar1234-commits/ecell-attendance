@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Calendar,
@@ -31,7 +31,7 @@ import {
   ActionItem,
   SessionStatus
 } from '../types';
-import { formatDate, getStatusBgColor, getStatusLabel } from '../lib/utils';
+import { formatDate, getStatusBgColor, getStatusLabel, exportToCSV } from '../lib/utils';
 import Modal from '../components/ui/Modal';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 
@@ -43,6 +43,8 @@ export default function SessionDetails() {
     dispatch,
     addToast,
     isMasterAdmin,
+    isPresident,
+    isGeneralSecretary,
     canManageSession,
     canUploadMoM,
     getApplicableMembersForSession,
@@ -52,23 +54,28 @@ export default function SessionDetails() {
   const session = state.sessions.find((s) => s.id === id);
   const momDoc = id ? getSessionMoM(id) : undefined;
 
-  // Local attendance edit state
-  const applicableMembers = useMemo(() => {
-    if (!session) return [];
-    return getApplicableMembersForSession(session);
-  }, [session, getApplicableMembersForSession]);
-
   const existingRecords = useMemo(() => {
     if (!session) return [];
     return state.records.filter((r) => r.session_id === session.id);
   }, [state.records, session]);
 
+  // Combine roster members and any existing record members so all records are always visible
+  const applicableMembers = useMemo(() => {
+    if (!session) return [];
+    const fromRoster = getApplicableMembersForSession(session);
+    const recordMemberIds = new Set(existingRecords.map((r) => r.member_id));
+    const extraMembers = state.members.filter(
+      (m) => recordMemberIds.has(m.id) && !fromRoster.some((r) => r.id === m.id)
+    );
+    return [...fromRoster, ...extraMembers];
+  }, [session, getApplicableMembersForSession, existingRecords, state.members]);
+
   const [attendanceMap, setAttendanceMap] = useState<
     Record<string, { status: AttendanceStatus; remarks: string }>
   >({});
 
-  // Initialize or re-sync attendance map
-  useState(() => {
+  // Reliably sync attendance map whenever records or applicable members change
+  useEffect(() => {
     const map: Record<string, { status: AttendanceStatus; remarks: string }> = {};
     const existingMap = new Map(existingRecords.map((r) => [r.member_id, r]));
 
@@ -77,11 +84,11 @@ export default function SessionDetails() {
       if (rec) {
         map[member.id] = { status: rec.status, remarks: rec.remarks || '' };
       } else {
-        map[member.id] = { status: 'present', remarks: '' };
+        map[member.id] = { status: 'absent', remarks: '' };
       }
     });
     setAttendanceMap(map);
-  });
+  }, [existingRecords, applicableMembers]);
 
   // Modals
   const [isMoMModalOpen, setIsMoMModalOpen] = useState(false);
@@ -150,7 +157,7 @@ export default function SessionDetails() {
 
   // Live Statistics
   const stats = useMemo(() => {
-    const list = applicableMembers.map((m) => attendanceMap[m.id]?.status || 'present');
+    const list = applicableMembers.map((m) => attendanceMap[m.id]?.status || 'absent');
     const present = list.filter((s) => s === 'present').length;
     const late = list.filter((s) => s === 'late').length;
     const absent = list.filter((s) => s === 'absent').length;
@@ -399,22 +406,49 @@ export default function SessionDetails() {
             </p>
           </div>
 
-          {userCanManage && (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => handleBulkSet('present')}
-                className="px-2.5 py-1 rounded-lg bg-status-success/15 hover:bg-status-success/25 text-status-success text-xs font-semibold cursor-pointer border border-status-success/30"
-              >
-                All Present
-              </button>
-              <button
-                onClick={() => handleBulkSet('absent')}
-                className="px-2.5 py-1 rounded-lg bg-status-absent/15 hover:bg-status-absent/25 text-status-absent text-xs font-semibold cursor-pointer border border-status-absent/30"
-              >
-                All Absent
-              </button>
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                const data = applicableMembers.map((m, idx) => ({
+                  '#': idx + 1,
+                  'Member ID': m.member_id,
+                  'Name': m.name,
+                  'Domain': m.department,
+                  'Status': (attendanceMap[m.id]?.status || 'absent').toUpperCase(),
+                  'Remarks': attendanceMap[m.id]?.remarks || '',
+                  'Session Name': session.name,
+                  'Session Date': session.date,
+                }));
+                exportToCSV(data, `${session.name.replace(/\s+/g, '_')}_attendance`);
+                addToast({
+                  type: 'success',
+                  title: 'Attendance Exported',
+                  message: `Exported attendance sheet for ${session.name}.`,
+                });
+              }}
+              className="px-2.5 py-1.5 rounded-lg bg-dark-bg hover:bg-dark-hover text-gray-300 text-xs font-semibold cursor-pointer border border-dark-border inline-flex items-center gap-1.5"
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5 text-accent-light" />
+              <span>Export CSV</span>
+            </button>
+
+            {userCanManage && (
+              <>
+                <button
+                  onClick={() => handleBulkSet('present')}
+                  className="px-2.5 py-1.5 rounded-lg bg-status-success/15 hover:bg-status-success/25 text-status-success text-xs font-semibold cursor-pointer border border-status-success/30"
+                >
+                  All Present
+                </button>
+                <button
+                  onClick={() => handleBulkSet('absent')}
+                  className="px-2.5 py-1.5 rounded-lg bg-status-absent/15 hover:bg-status-absent/25 text-status-absent text-xs font-semibold cursor-pointer border border-status-absent/30"
+                >
+                  All Absent
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Attendance Statistics Summary Bar */}

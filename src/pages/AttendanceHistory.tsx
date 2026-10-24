@@ -43,6 +43,7 @@ export default function AttendanceHistory() {
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedSession, setSelectedSession] = useState('ALL');
   const [selectedMember, setSelectedMember] = useState('ALL');
   const [selectedDept, setSelectedDept] = useState('ALL');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
@@ -85,14 +86,23 @@ export default function AttendanceHistory() {
           item.session.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
           (item.remarks && item.remarks.toLowerCase().includes(searchTerm.toLowerCase()));
 
+        // Meeting / Session Filter
+        const matchSession = selectedSession === 'ALL' || item.session.id === selectedSession;
+
         // Member
         const matchMember = selectedMember === 'ALL' || item.member.id === selectedMember;
 
-        // Department
-        const matchDept = selectedDept === 'ALL' || item.member.department === selectedDept;
+        // Domain / Department (matches either member's domain or meeting's domain)
+        const matchDept =
+          selectedDept === 'ALL' ||
+          item.member.department === selectedDept ||
+          item.session.domain === selectedDept;
 
-        // Category
-        const matchCat = selectedCategory === 'ALL' || item.session.category === selectedCategory;
+        // Category / Session Type
+        const matchCat =
+          selectedCategory === 'ALL' ||
+          item.session.category === selectedCategory ||
+          item.session.session_type === selectedCategory;
 
         // Status
         const matchStatus = selectedStatus === 'ALL' || item.status === selectedStatus;
@@ -106,7 +116,7 @@ export default function AttendanceHistory() {
           matchDate = matchDate && item.session.date <= endDate;
         }
 
-        return matchSearch && matchMember && matchDept && matchCat && matchStatus && matchDate;
+        return matchSearch && matchSession && matchMember && matchDept && matchCat && matchStatus && matchDate;
       })
       .sort((a, b) => {
         const dateA = a.session ? new Date(a.session.date).getTime() : 0;
@@ -116,6 +126,7 @@ export default function AttendanceHistory() {
   }, [
     joinedRecords,
     searchTerm,
+    selectedSession,
     selectedMember,
     selectedDept,
     selectedCategory,
@@ -225,7 +236,7 @@ export default function AttendanceHistory() {
         <>
           {/* Filters Bar */}
           <div className="bg-dark-card border border-dark-border rounded-xl p-4 shadow-sm space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
               {/* Search */}
               <div className="relative">
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -236,6 +247,22 @@ export default function AttendanceHistory() {
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white placeholder-gray-500 focus:outline-none focus:border-accent-primary transition-colors"
                 />
+              </div>
+
+              {/* Specific Meeting / Session Selector */}
+              <div>
+                <select
+                  value={selectedSession}
+                  onChange={(e) => setSelectedSession(e.target.value)}
+                  className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white focus:outline-none focus:border-accent-primary transition-colors cursor-pointer font-semibold"
+                >
+                  <option value="ALL">All Meetings ({sessions.length})</option>
+                  {sessions.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {formatDate(s.date)} — {s.name} [{s.domain}]
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {/* Member */}

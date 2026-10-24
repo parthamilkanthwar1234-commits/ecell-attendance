@@ -19,6 +19,7 @@ import {
   generateAuditLogs,
   generateDefaultSettings,
 } from '../lib/demoData';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 // Storage keys bumped for clean production slate (only 9 core leads, 0 past sessions)
 const STORAGE_KEYS = {
@@ -410,16 +411,64 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, undefined, initializeState);
 
   // Persistence to localStorage
+  // Cloud synchronization with Supabase when configured
+  useEffect(() => {
+    if (!isSupabaseConfigured() || !supabase) return;
+
+    let isMounted = true;
+    async function syncFromCloud() {
+      try {
+        const [sessRes, recRes, memRes] = await Promise.all([
+          supabase.from('sessions').select('*'),
+          supabase.from('records').select('*'),
+          supabase.from('members').select('*'),
+        ]);
+
+        if (isMounted) {
+          if (sessRes.data && sessRes.data.length > 0) {
+            dispatch({ type: 'SET_SESSIONS', payload: sessRes.data });
+          }
+          if (memRes.data && memRes.data.length > 0) {
+            dispatch({ type: 'SET_MEMBERS', payload: memRes.data });
+          }
+          if (recRes.data && recRes.data.length > 0) {
+            dispatch({
+              type: 'SAVE_ATTENDANCE',
+              payload: { records: recRes.data, auditReason: 'Synced from cloud database' },
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Supabase sync notice:', err);
+      }
+    }
+
+    syncFromCloud();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Local & Cloud Persistence
   useEffect(() => {
     saveToStorage(STORAGE_KEYS.MEMBERS_V3, state.members);
+    if (isSupabaseConfigured() && supabase && state.members.length > 0) {
+      supabase.from('members').upsert(state.members).then();
+    }
   }, [state.members]);
 
   useEffect(() => {
     saveToStorage(STORAGE_KEYS.SESSIONS_V3, state.sessions);
+    if (isSupabaseConfigured() && supabase && state.sessions.length > 0) {
+      supabase.from('sessions').upsert(state.sessions).then();
+    }
   }, [state.sessions]);
 
   useEffect(() => {
     saveToStorage(STORAGE_KEYS.RECORDS_V3, state.records);
+    if (isSupabaseConfigured() && supabase && state.records.length > 0) {
+      supabase.from('records').upsert(state.records).then();
+    }
   }, [state.records]);
 
   useEffect(() => {
