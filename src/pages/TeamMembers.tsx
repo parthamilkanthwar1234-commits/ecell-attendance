@@ -56,6 +56,7 @@ export default function TeamMembers() {
     canEditMember,
     canDeleteMember,
     isLeadMember,
+    isSelf,
     canAddMemberToDomain,
   } = useApp();
   const { members, settings, auth } = state;
@@ -151,10 +152,12 @@ export default function TeamMembers() {
         addToast({
           type: 'error',
           title: 'Permission Denied',
-          message: 'Only Master Admin can modify Core Committee Lead profiles.',
+          message: 'You do not have permission to modify this profile.',
         });
         return;
       }
+
+      const editingSelf = isSelf(editingMember);
 
       const assignedDomain: ECellDomain = isMasterAdmin()
         ? formData.department
@@ -163,13 +166,30 @@ export default function TeamMembers() {
 
       const updated: Member = {
         ...editingMember,
-        ...formData,
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+        phone: formData.phone.trim(),
         department: assignedDomain,
         role: assignedRole,
         updated_at: new Date().toISOString(),
       };
       dispatch({ type: 'UPDATE_MEMBER', payload: updated });
-      addToast({ type: 'success', title: 'Member Updated', message: `${formData.name}'s profile saved.` });
+
+      // If user is editing their own profile, synchronize the active auth and userAccount state
+      if (editingSelf && user) {
+        const updatedUser: UserAccount = {
+          ...user,
+          full_name: updated.name,
+          email: updated.email,
+        };
+        dispatch({ type: 'UPDATE_USER_ACCOUNT', payload: updatedUser });
+      }
+
+      addToast({
+        type: 'success',
+        title: editingSelf ? 'Your Profile Updated' : 'Member Updated',
+        message: `${formData.name}'s profile saved successfully.`,
+      });
     } else {
       // Adding a new member
       if (!canAddMemberToDomain(formData.department)) {
@@ -450,6 +470,11 @@ export default function TeamMembers() {
                           <h3 className="font-bold text-sm text-white group-hover:text-accent-light transition-colors">
                             {member.name}
                           </h3>
+                          {isSelf(member) && (
+                            <span className="text-[10px] px-1.5 py-0.2 rounded font-bold bg-accent-primary/20 text-accent-light border border-accent-primary/40">
+                              You
+                            </span>
+                          )}
                           <span
                             className={`w-1.5 h-1.5 rounded-full ${
                               member.status === 'active' ? 'bg-status-success' : 'bg-gray-500'
@@ -464,8 +489,12 @@ export default function TeamMembers() {
                       {canEditMember(member) ? (
                         <button
                           onClick={(e) => handleOpenEdit(member, e)}
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-dark-hover transition-colors cursor-pointer"
-                          title="Edit profile"
+                          className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                            isSelf(member)
+                              ? 'text-accent-light bg-accent-primary/10 hover:bg-accent-primary/25 border border-accent-primary/30'
+                              : 'text-gray-400 hover:text-white hover:bg-dark-hover'
+                          }`}
+                          title={isSelf(member) ? 'Edit your profile' : 'Edit profile'}
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
@@ -560,7 +589,9 @@ export default function TeamMembers() {
         onClose={() => setIsFormOpen(false)}
         title={
           editingMember
-            ? isLeadMember(editingMember)
+            ? isSelf(editingMember)
+              ? 'Edit Your Profile'
+              : isLeadMember(editingMember)
               ? `Edit Lead Profile: ${editingMember.name}`
               : `Edit Member: ${editingMember.name}`
             : user?.role === 'lead_admin'
@@ -588,8 +619,9 @@ export default function TeamMembers() {
               <input
                 type="text"
                 value={formData.member_id}
+                disabled={!isMasterAdmin()}
                 onChange={(e) => setFormData({ ...formData, member_id: e.target.value })}
-                className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white focus:outline-none focus:border-accent-primary font-mono"
+                className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white focus:outline-none focus:border-accent-primary font-mono disabled:opacity-60"
               />
             </div>
 
@@ -599,7 +631,7 @@ export default function TeamMembers() {
               </label>
               <select
                 value={formData.department}
-                disabled={!isMasterAdmin() && !isPresident() && user?.role === 'lead_admin'}
+                disabled={!isMasterAdmin()}
                 onChange={(e) => setFormData({ ...formData, department: e.target.value as ECellDomain })}
                 className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white focus:outline-none focus:border-accent-primary cursor-pointer font-semibold disabled:opacity-75"
               >
@@ -609,9 +641,11 @@ export default function TeamMembers() {
                   </option>
                 ))}
               </select>
-              {!isMasterAdmin() && !isPresident() && user?.role === 'lead_admin' && (
+              {!isMasterAdmin() && (
                 <span className="text-[10px] text-gray-500 mt-1 block">
-                  Automatically assigned to your domain ({user.domain}).
+                  {editingMember && isSelf(editingMember)
+                    ? 'Your domain is locked. Contact Master Admin to transfer domains.'
+                    : `Assigned to your domain (${user?.domain || formData.department}).`}
                 </span>
               )}
             </div>
@@ -625,17 +659,16 @@ export default function TeamMembers() {
                 className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white focus:outline-none focus:border-accent-primary cursor-pointer disabled:opacity-60"
               >
                 <option value="Member">Member</option>
-                {isMasterAdmin() && (
-                  <>
-                    <option value="Domain Lead">Domain Lead</option>
-                    <option value="General Secretary">General Secretary</option>
-                    <option value="President">President</option>
-                  </>
-                )}
+                <option value="Domain Lead">Domain Lead</option>
+                <option value="General Secretary">General Secretary</option>
+                <option value="President">President</option>
+                <option value="Master Admin">Master Admin</option>
               </select>
               {!isMasterAdmin() && (
                 <span className="text-[10px] text-gray-500 mt-1 block">
-                  Only Master Admin can assign Lead roles.
+                  {editingMember && isSelf(editingMember)
+                    ? 'Designation is locked. Only Master Admin can modify Lead roles.'
+                    : 'Only Master Admin can assign Lead roles.'}
                 </span>
               )}
             </div>
@@ -675,7 +708,11 @@ export default function TeamMembers() {
               type="submit"
               className="px-5 py-2 bg-accent-primary hover:bg-blue-600 text-white font-semibold text-xs rounded-lg cursor-pointer shadow-lg shadow-blue-500/20"
             >
-              {editingMember ? 'Save Changes' : 'Add to Domain Roster'}
+              {editingMember
+                ? isSelf(editingMember)
+                  ? 'Update My Profile'
+                  : 'Save Changes'
+                : 'Add to Domain Roster'}
             </button>
           </div>
         </form>

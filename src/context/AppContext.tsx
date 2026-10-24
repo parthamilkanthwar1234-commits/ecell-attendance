@@ -397,6 +397,7 @@ interface AppContextType {
   canEditMember: (member: Member) => boolean;
   canDeleteMember: (member: Member) => boolean;
   isLeadMember: (member: Member) => boolean;
+  isSelf: (member: Member) => boolean;
   getApplicableMembersForSession: (session: AttendanceSession) => Member[];
   getMemberAttendancePercentage: (memberId: string) => number | null;
   getOverallAttendancePercentage: (domainFilter?: ECellDomain | 'ALL') => number | null;
@@ -493,26 +494,41 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
-  // ONLY Master Admin can edit Lead profiles; Leads can only edit members of their own domain
+  // Check if member is the currently authenticated user
+  const isSelf = useCallback(
+    (m: Member): boolean => {
+      if (!user) return false;
+      return (
+        (!!m.username && user.username.toLowerCase() === m.username.toLowerCase()) ||
+        (!!m.email && user.email.toLowerCase() === m.email.toLowerCase()) ||
+        user.full_name.toLowerCase() === m.name.toLowerCase()
+      );
+    },
+    [user]
+  );
+
+  // Master Admin can edit anyone; Each user can edit their OWN profile; Leads can edit regular members of their own domain
   const canEditMember = useCallback(
     (targetMember: Member) => {
       if (!user) return false;
-      if (isLeadMember(targetMember)) {
-        return isMasterAdmin();
-      }
       if (isMasterAdmin()) return true;
+      if (isSelf(targetMember)) return true;
+      if (isLeadMember(targetMember)) {
+        return false;
+      }
       if (user.role === 'lead_admin') {
         return user.domain === targetMember.department && targetMember.role === 'Member';
       }
       return false;
     },
-    [user, isMasterAdmin, isLeadMember]
+    [user, isMasterAdmin, isSelf, isLeadMember]
   );
 
-  // ONLY Master Admin can remove leads; Leads can only remove regular members of their own domain
+  // ONLY Master Admin can remove leads; Users cannot delete themselves; Leads can remove regular members of their own domain
   const canDeleteMember = useCallback(
     (targetMember: Member) => {
       if (!user) return false;
+      if (isSelf(targetMember)) return false;
       if (isLeadMember(targetMember)) {
         if (!isMasterAdmin()) return false;
         if (targetMember.username === 'parth.amilkanthwar' || targetMember.role === 'Master Admin') {
@@ -526,7 +542,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
       return false;
     },
-    [user, isMasterAdmin, isLeadMember]
+    [user, isMasterAdmin, isSelf, isLeadMember]
   );
 
   // Can user add a member to a domain?
@@ -693,6 +709,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         canEditMember,
         canDeleteMember,
         isLeadMember,
+        isSelf,
         getApplicableMembersForSession,
         getSessionMoM,
         getMemberAttendancePercentage,
