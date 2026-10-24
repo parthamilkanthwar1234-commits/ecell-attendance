@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
-import { Menu, Shield } from 'lucide-react';
+import { Menu, Shield, RefreshCw, CloudCheck, Check } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import Sidebar from './Sidebar';
 import Toast from '../ui/Toast';
@@ -20,8 +20,22 @@ const pageTitles: Record<string, string> = {
 };
 
 export default function Layout() {
-  const { state, dispatch } = useApp();
+  const { state, dispatch, syncFromCloud, addToast } = useApp();
   const location = useLocation();
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    const success = await syncFromCloud();
+    setIsSyncing(false);
+    if (success) {
+      addToast({
+        type: 'success',
+        title: 'Cloud Synced',
+        message: 'Synchronized with Supabase: up to date across all devices.',
+      });
+    }
+  };
 
   const pageTitle = useMemo(() => {
     if (pageTitles[location.pathname]) return pageTitles[location.pathname];
@@ -55,9 +69,25 @@ export default function Layout() {
             </h2>
           </div>
 
-          {/* Right side user badge */}
-          {user && (
-            <div className="flex items-center gap-3">
+          {/* Right side user badge & Cloud Sync */}
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={handleManualSync}
+              disabled={isSyncing}
+              title="Click to manually refresh data from Supabase Cloud"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-dark-bg border border-dark-border text-xs text-gray-300 hover:text-white hover:border-accent-primary/40 transition-all cursor-pointer"
+            >
+              <RefreshCw
+                className={`h-3.5 w-3.5 text-accent-light ${
+                  isSyncing ? 'animate-spin text-accent-primary' : ''
+                }`}
+              />
+              <span className="hidden sm:inline font-semibold text-[11px]">
+                {isSyncing ? 'Syncing...' : 'Cloud Synced'}
+              </span>
+            </button>
+
+            {user && (
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-dark-bg border border-dark-border">
                 <div className="w-6 h-6 rounded-full bg-accent-primary/20 text-accent-light flex items-center justify-center font-bold text-[10px]">
                   {user.full_name.charAt(0)}
@@ -71,8 +101,8 @@ export default function Layout() {
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </header>
 
         {/* Scrollable page body */}

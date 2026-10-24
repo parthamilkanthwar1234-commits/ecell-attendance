@@ -33,9 +33,34 @@ export default function Login() {
     setTimeout(() => {
       setIsLoading(false);
 
-      const matchedUser = state.userAccounts.find(
+      let matchedUser = state.userAccounts.find(
         (u) => u.username.toLowerCase() === cleanUsername
       );
+
+      // If not yet in userAccounts, check if matching member exists in cloud-synced roster
+      if (!matchedUser) {
+        const matchedMember = state.members.find(
+          (m) =>
+            (m.username && m.username.toLowerCase() === cleanUsername) ||
+            (m.email && m.email.toLowerCase() === cleanUsername)
+        );
+
+        if (matchedMember) {
+          matchedUser = {
+            id: `user-${matchedMember.id}`,
+            full_name: matchedMember.name,
+            username: matchedMember.username || cleanUsername,
+            role: 'member',
+            domain: matchedMember.department,
+            email: matchedMember.email,
+            password: DEFAULT_PASSWORD,
+            temp_password: DEFAULT_PASSWORD,
+            status: matchedMember.status === 'inactive' ? 'disabled' : 'active',
+            must_change_password: false,
+            created_at: matchedMember.created_at || new Date().toISOString(),
+          };
+        }
+      }
 
       if (!matchedUser) {
         addToast({

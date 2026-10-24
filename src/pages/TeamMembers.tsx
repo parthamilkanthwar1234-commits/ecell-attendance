@@ -16,11 +16,13 @@ import {
   Filter,
   CheckCircle2,
   Lock,
+  RefreshCw,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Member, MemberRole, ECellDomain, UserAccount } from '../types';
 import { formatDate, generateId, getStatusBgColor, getStatusLabel, exportToCSV } from '../lib/utils';
 import { DEFAULT_PASSWORD } from '../lib/demoData';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import Modal from '../components/ui/Modal';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 
@@ -58,6 +60,7 @@ export default function TeamMembers() {
     isLeadMember,
     isSelf,
     canAddMemberToDomain,
+    syncFromCloud,
   } = useApp();
   const { members, settings, auth } = state;
   const user = auth.user;
@@ -66,6 +69,8 @@ export default function TeamMembers() {
   const [selectedDept, setSelectedDept] = useState('ALL');
   const [selectedRole, setSelectedRole] = useState('ALL');
   const [sortBy, setSortBy] = useState<'name-asc' | 'name-desc' | 'att-desc' | 'att-asc'>('name-asc');
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Modals
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -140,130 +145,152 @@ export default function TeamMembers() {
     setIsFormOpen(true);
   };
 
-  const handleSaveMember = (e: React.FormEvent) => {
+  const handleSaveMember = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim()) {
       addToast({ type: 'error', title: 'Validation Error', message: 'Member name is required.' });
       return;
     }
 
-    if (editingMember) {
-      if (!canEditMember(editingMember)) {
-        addToast({
-          type: 'error',
-          title: 'Permission Denied',
-          message: 'You do not have permission to modify this profile.',
-        });
-        return;
-      }
+    setIsSaving(true);
+    try {
+      if (editingMember) {
+        if (!canEditMember(editingMember)) {
+          addToast({
+            type: 'error',
+            title: 'Permission Denied',
+            message: 'You do not have permission to modify this profile.',
+          });
+          setIsSaving(false);
+          return;
+        }
 
-      const editingSelf = isSelf(editingMember);
+        const editingSelf = isSelf(editingMember);
 
-      const assignedDomain: ECellDomain = isMasterAdmin()
-        ? formData.department
-        : (editingMember.department as ECellDomain);
-      const assignedRole: MemberRole = isMasterAdmin() ? formData.role : editingMember.role;
+        const assignedDomain: ECellDomain = isMasterAdmin()
+          ? formData.department
+          : (editingMember.department as ECellDomain);
+        const assignedRole: MemberRole = isMasterAdmin() ? formData.role : editingMember.role;
 
-      const updated: Member = {
-        ...editingMember,
-        name: formData.name.trim(),
-        email: formData.email.trim(),
-        phone: formData.phone.trim(),
-        department: assignedDomain,
-        role: assignedRole,
-        updated_at: new Date().toISOString(),
-      };
-      dispatch({ type: 'UPDATE_MEMBER', payload: updated });
-
-      // If user is editing their own profile, synchronize the active auth and userAccount state
-      if (editingSelf && user) {
-        const updatedUser: UserAccount = {
-          ...user,
-          full_name: updated.name,
-          email: updated.email,
+        const updated: Member = {
+          ...editingMember,
+          name: formData.name.trim(),
+          email: formData.email.trim(),
+          phone: formData.phone.trim(),
+          department: assignedDomain,
+          role: assignedRole,
+          updated_at: new Date().toISOString(),
         };
-        dispatch({ type: 'UPDATE_USER_ACCOUNT', payload: updatedUser });
-      }
+        dispatch({ type: 'UPDATE_MEMBER', payload: updated });
 
-      addToast({
-        type: 'success',
-        title: editingSelf ? 'Your Profile Updated' : 'Member Updated',
-        message: `${formData.name}'s profile saved successfully.`,
-      });
-    } else {
-      // Adding a new member
-      if (!canAddMemberToDomain(formData.department)) {
+        // Direct Cloud sync
+        if (isSupabaseConfigured() && supabase) {
+          const { error } = await supabase.from('members').upsert([updated]);
+          if (error) console.error('Cloud member update error:', error);
+        }
+
+        // If user is editing their own profile, synchronize the active auth and userAccount state
+        if (editingSelf && user) {
+          const updatedUser: UserAccount = {
+            ...user,
+            full_name: updated.name,
+            email: updated.email,
+          };
+          dispatch({ type: 'UPDATE_USER_ACCOUNT', payload: updatedUser });
+        }
+
         addToast({
-          type: 'error',
-          title: 'Permission Denied',
-          message: `You can only add members to your own domain (${user?.domain}).`,
+          type: 'success',
+          title: editingSelf ? 'Your Profile Updated' : 'Member Updated & Cloud Synced',
+          message: `${formData.name}'s profile saved and synchronized to cloud.`,
         });
-        return;
+      } else {
+        // Adding a new member
+        if (!canAddMemberToDomain(formData.department)) {
+          addToast({
+            type: 'error',
+            title: 'Permission Denied',
+            message: `You can only add members to your own domain (${user?.domain}).`,
+          });
+          setIsSaving(false);
+          return;
+        }
+
+        const assignedDomain = isMasterAdmin()
+          ? formData.department
+          : ((user?.domain as ECellDomain) || formData.department);
+        const assignedRole: MemberRole = isMasterAdmin() ? formData.role : 'Member';
+
+        const username = formData.name.toLowerCase().trim().replace(/\s+/g, '.');
+
+        const newMember: Member = {
+          id: generateId('member'),
+          ...formData,
+          department: assignedDomain,
+          role: assignedRole,
+          email: formData.email || `${username}@ecell.jspmrscoe.in`,
+          username,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        dispatch({ type: 'ADD_MEMBER', payload: newMember });
+
+        // Direct Cloud sync to Supabase
+        if (isSupabaseConfigured() && supabase) {
+          const { error } = await supabase.from('members').upsert([newMember]);
+          if (error) console.error('Cloud member add error:', error);
+        }
+
+        // Automatically create a user login account for the newly added member
+        const newAccount: UserAccount = {
+          id: generateId('user'),
+          full_name: newMember.name,
+          username,
+          role: 'member',
+          domain: newMember.department,
+          email: newMember.email,
+          password: DEFAULT_PASSWORD,
+          status: 'active',
+          must_change_password: false,
+          temp_password: DEFAULT_PASSWORD,
+          created_at: new Date().toISOString(),
+        };
+        dispatch({ type: 'ADD_USER_ACCOUNT', payload: newAccount });
+
+        dispatch({
+          type: 'ADD_AUDIT_LOG',
+          payload: {
+            id: `audit-${Date.now()}`,
+            actor_id: user?.id || 'lead',
+            actor_name: user?.full_name || 'Domain Lead',
+            actor_role: user?.role || 'lead_admin',
+            action_type: 'MEMBER_ADDED',
+            entity_type: 'MEMBER',
+            entity_id: newMember.id,
+            member_name: newMember.name,
+            new_value: `Added member ${newMember.name} to domain ${newMember.department}`,
+            timestamp: new Date().toISOString(),
+          },
+        });
+
+        addToast({
+          type: 'success',
+          title: 'Member Added & Cloud Synced',
+          message: `${formData.name} added to ${newMember.department} and synced across all devices.`,
+        });
       }
 
-      const assignedDomain = isMasterAdmin()
-        ? formData.department
-        : ((user?.domain as ECellDomain) || formData.department);
-      const assignedRole: MemberRole = isMasterAdmin() ? formData.role : 'Member';
-
-      const username = formData.name.toLowerCase().trim().replace(/\s+/g, '.');
-
-      const newMember: Member = {
-        id: generateId('member'),
-        ...formData,
-        department: assignedDomain,
-        role: assignedRole,
-        email: formData.email || `${username}@ecell.jspmrscoe.in`,
-        username,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-
-      dispatch({ type: 'ADD_MEMBER', payload: newMember });
-
-      // Automatically create a user login account for the newly added member
-      const newAccount: UserAccount = {
-        id: generateId('user'),
-        full_name: newMember.name,
-        username,
-        role: 'member',
-        domain: newMember.department,
-        email: newMember.email,
-        password: DEFAULT_PASSWORD,
-        status: 'active',
-        must_change_password: false,
-        temp_password: DEFAULT_PASSWORD,
-        created_at: new Date().toISOString(),
-      };
-      dispatch({ type: 'ADD_USER_ACCOUNT', payload: newAccount });
-
-      dispatch({
-        type: 'ADD_AUDIT_LOG',
-        payload: {
-          id: `audit-${Date.now()}`,
-          actor_id: user?.id || 'lead',
-          actor_name: user?.full_name || 'Domain Lead',
-          actor_role: user?.role || 'lead_admin',
-          action_type: 'MEMBER_ADDED',
-          entity_type: 'MEMBER',
-          entity_id: newMember.id,
-          member_name: newMember.name,
-          new_value: `Added member ${newMember.name} to domain ${newMember.department}`,
-          timestamp: new Date().toISOString(),
-        },
-      });
-
-      addToast({
-        type: 'success',
-        title: 'Member Added Directly',
-        message: `${formData.name} added to ${newMember.department} and reflected on the roster.`,
-      });
+      await syncFromCloud();
+    } catch (err) {
+      console.error('Error saving member:', err);
+    } finally {
+      setIsSaving(false);
+      setIsFormOpen(false);
     }
-
-    setIsFormOpen(false);
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!memberToDelete) return;
     if (!canDeleteMember(memberToDelete)) {
       addToast({
@@ -274,8 +301,20 @@ export default function TeamMembers() {
       setMemberToDelete(null);
       return;
     }
-    dispatch({ type: 'DELETE_MEMBER', payload: memberToDelete.id });
-    addToast({ type: 'info', title: 'Member Removed', message: `${memberToDelete.name} has been removed.` });
+    const memberId = memberToDelete.id;
+    dispatch({ type: 'DELETE_MEMBER', payload: memberId });
+
+    if (isSupabaseConfigured() && supabase) {
+      await supabase.from('members').delete().eq('id', memberId);
+      await supabase.from('records').delete().eq('member_id', memberId);
+    }
+    await syncFromCloud();
+
+    addToast({
+      type: 'info',
+      title: 'Member Removed',
+      message: `${memberToDelete.name} has been removed from cloud roster.`,
+    });
     setMemberToDelete(null);
   };
 
@@ -351,7 +390,26 @@ export default function TeamMembers() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+          <button
+            onClick={async () => {
+              setIsSyncing(true);
+              const ok = await syncFromCloud();
+              setIsSyncing(false);
+              addToast({
+                type: ok ? 'success' : 'info',
+                title: ok ? 'Cloud Synced' : 'Sync Notice',
+                message: ok ? 'Team members refreshed and synced from Supabase Cloud.' : 'Running with local storage.',
+              });
+            }}
+            disabled={isSyncing}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border text-gray-200 font-semibold text-xs transition-colors cursor-pointer"
+            title="Fetch latest team members added from any device"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 text-accent-light ${isSyncing ? 'animate-spin' : ''}`} />
+            <span>Sync Cloud</span>
+          </button>
+
           <button
             onClick={handleExportTeam}
             className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border text-gray-200 font-semibold text-xs transition-colors cursor-pointer"
@@ -706,9 +764,12 @@ export default function TeamMembers() {
             </button>
             <button
               type="submit"
-              className="px-5 py-2 bg-accent-primary hover:bg-blue-600 text-white font-semibold text-xs rounded-lg cursor-pointer shadow-lg shadow-blue-500/20"
+              disabled={isSaving}
+              className="px-5 py-2 bg-accent-primary hover:bg-blue-600 disabled:opacity-50 text-white font-semibold text-xs rounded-lg cursor-pointer shadow-lg shadow-blue-500/20"
             >
-              {editingMember
+              {isSaving
+                ? 'Syncing to Cloud...'
+                : editingMember
                 ? isSelf(editingMember)
                   ? 'Update My Profile'
                   : 'Save Changes'

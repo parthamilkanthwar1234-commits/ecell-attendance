@@ -60,6 +60,7 @@ type Action =
   | { type: 'ADD_SESSION'; payload: AttendanceSession }
   | { type: 'UPDATE_SESSION'; payload: AttendanceSession }
   | { type: 'DELETE_SESSION'; payload: string }
+  | { type: 'SET_RECORDS'; payload: AttendanceRecord[] }
   | { type: 'SAVE_ATTENDANCE'; payload: { records: AttendanceRecord[]; auditReason?: string } }
   | { type: 'RESTORE_RECORD'; payload: { recordId: string; previousStatus: AttendanceRecord['status'] } }
   | { type: 'ADD_MOM'; payload: MeetingMinutes }
@@ -152,13 +153,17 @@ function appReducer(state: AppState, action: Action): AppState {
 
     case 'ADD_MEMBER':
       if (isSupabaseConfigured() && supabase) {
-        supabase.from('members').upsert([action.payload]).then();
+        supabase.from('members').upsert([action.payload]).then(({ error }) => {
+          if (error) console.error('Cloud member upsert error:', error);
+        });
       }
       return { ...state, members: [...state.members, action.payload] };
 
     case 'UPDATE_MEMBER':
       if (isSupabaseConfigured() && supabase) {
-        supabase.from('members').upsert([action.payload]).then();
+        supabase.from('members').upsert([action.payload]).then(({ error }) => {
+          if (error) console.error('Cloud member update error:', error);
+        });
       }
       return {
         ...state,
@@ -183,13 +188,17 @@ function appReducer(state: AppState, action: Action): AppState {
 
     case 'ADD_SESSION':
       if (isSupabaseConfigured() && supabase) {
-        supabase.from('sessions').upsert([action.payload]).then();
+        supabase.from('sessions').upsert([action.payload]).then(({ error }) => {
+          if (error) console.error('Cloud session upsert error:', error);
+        });
       }
       return { ...state, sessions: [action.payload, ...state.sessions] };
 
     case 'UPDATE_SESSION':
       if (isSupabaseConfigured() && supabase) {
-        supabase.from('sessions').upsert([action.payload]).then();
+        supabase.from('sessions').upsert([action.payload]).then(({ error }) => {
+          if (error) console.error('Cloud session update error:', error);
+        });
       }
       return {
         ...state,
@@ -209,6 +218,9 @@ function appReducer(state: AppState, action: Action): AppState {
         records: state.records.filter((r) => r.session_id !== action.payload),
         momDocuments: state.momDocuments.filter((m) => m.session_id !== action.payload),
       };
+
+    case 'SET_RECORDS':
+      return { ...state, records: action.payload };
 
     case 'SAVE_ATTENDANCE': {
       const { records: newRecords, auditReason } = action.payload;
@@ -422,6 +434,7 @@ interface AppContextType {
   canDeleteMember: (member: Member) => boolean;
   isLeadMember: (member: Member) => boolean;
   isSelf: (member: Member) => boolean;
+  syncFromCloud: () => Promise<boolean>;
   getApplicableMembersForSession: (session: AttendanceSession) => Member[];
   getMemberAttendancePercentage: (memberId: string) => number | null;
   getOverallAttendancePercentage: (domainFilter?: ECellDomain | 'ALL') => number | null;
@@ -435,53 +448,92 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Persistence to localStorage
   // Cloud synchronization with Supabase (real-time & multi-device sync)
-  useEffect(() => {
-    if (!isSupabaseConfigured() || !supabase) return;
+  const syncFromCloud = useCallback(async (): Promise<boolean> => {
+    if (!isSupabaseConfigured() || !supabase) return false;
 
-    let isMounted = true;
-    async function syncFromCloud() {
-      try {
-        const [sessRes, recRes, memRes] = await Promise.all([
-          supabase.from('sessions').select('*'),
-          supabase.from('records').select('*'),
-          supabase.from('members').select('*'),
-        ]);
+    try {
+      const [sessRes, recRes, memRes] = await Promise.all([
+        supabase.from('sessions').select('*'),
+        supabase.from('records').select('*'),
+        supabase.from('members').select('*'),
+      ]);
 
-        if (isMounted) {
-          if (sessRes.data && sessRes.data.length > 0) {
-            dispatch({ type: 'SET_SESSIONS', payload: sessRes.data });
-          }
-          if (memRes.data && memRes.data.length > 0) {
-            dispatch({ type: 'SET_MEMBERS', payload: memRes.data });
-          } else if (state.members.length > 0) {
-            // Seed cloud database with initial 9 core leads
-            supabase.from('members').upsert(state.members).then();
-          }
-          if (recRes.data && recRes.data.length > 0) {
-            dispatch({
-              type: 'SAVE_ATTENDANCE',
-              payload: { records: recRes.data, auditReason: 'Synced from cloud database' },
-            });
-          }
-        }
-      } catch (err) {
-        console.warn('Supabase sync notice:', err);
+      if (sessRes.data) {
+        dispatch({ type: 'SET_SESSIONS', payload: sessRes.data });
       }
-    }
 
+      if (memRes.data && memRes.data.length > 0) {
+        // Merge cloud members with default core leads so none are lost
+        const initialCore = generateAllMembers();
+        const cloudMemberIds = new Set(memRes.data.map((m: any) => m.id));
+        const mergedMembers: Member[] = [...memRes.data];
+        initialCore.forEach((coreMember) => {
+          if (!cloudMemberIds.has(coreMember.id)) {
+            mergedMembers.push(coreMember);
+          }
+        });
+        dispatch({ type: 'SET_MEMBERS', payload: mergedMembers });
+      } else {
+        // Seed cloud database with initial 9 core leads if cloud is empty
+        const initialCore = generateAllMembers();
+        supabase.from('members').upsert(initialCore).then();
+      }
+
+      if (recRes.data) {
+        dispatch({ type: 'SET_RECORDS', payload: recRes.data });
+      }
+      return true;
+    } catch (err) {
+      console.warn('Supabase sync notice:', err);
+      return false;
+    }
+  }, []);
+
+  useEffect(() => {
     syncFromCloud();
 
-    // Auto-sync when window gains focus or on a short background interval
+    // Subscribe to Supabase Realtime channel for instant cross-device multi-client updates
+    let channel: any = null;
+    if (isSupabaseConfigured() && supabase) {
+      channel = supabase
+        .channel('ecell-live-sync')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'members' },
+          () => {
+            syncFromCloud();
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'sessions' },
+          () => {
+            syncFromCloud();
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'records' },
+          () => {
+            syncFromCloud();
+          }
+        )
+        .subscribe();
+    }
+
+    // Auto-sync when window gains focus or on background interval
     const handleFocus = () => syncFromCloud();
     window.addEventListener('focus', handleFocus);
-    const interval = setInterval(syncFromCloud, 12000);
+    const interval = setInterval(syncFromCloud, 8000);
 
     return () => {
-      isMounted = false;
       window.removeEventListener('focus', handleFocus);
       clearInterval(interval);
+      if (channel && supabase) {
+        supabase.removeChannel(channel);
+      }
     };
-  }, []);
+  }, [syncFromCloud]);
 
   // Local & Cloud Persistence
   useEffect(() => {
@@ -793,6 +845,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         canDeleteMember,
         isLeadMember,
         isSelf,
+        syncFromCloud,
         getApplicableMembersForSession,
         getSessionMoM,
         getMemberAttendancePercentage,
