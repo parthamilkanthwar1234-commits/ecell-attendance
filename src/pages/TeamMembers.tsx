@@ -14,11 +14,13 @@ import {
   FileSpreadsheet,
   Download,
   Filter,
-  CheckCircle2
+  CheckCircle2,
+  Lock,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Member, MemberRole, ECellDomain, UserAccount } from '../types';
 import { formatDate, generateId, getStatusBgColor, getStatusLabel, exportToCSV } from '../lib/utils';
+import { DEFAULT_PASSWORD } from '../lib/demoData';
 import Modal from '../components/ui/Modal';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 
@@ -51,6 +53,10 @@ export default function TeamMembers() {
     getMemberAttendancePercentage,
     isMasterAdmin,
     isPresident,
+    canEditMember,
+    canDeleteMember,
+    isLeadMember,
+    canAddMemberToDomain,
   } = useApp();
   const { members, settings, auth } = state;
   const user = auth.user;
@@ -102,6 +108,23 @@ export default function TeamMembers() {
 
   const handleOpenEdit = (m: Member, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!canEditMember(m)) {
+      if (isLeadMember(m)) {
+        addToast({
+          type: 'error',
+          title: 'Access Restricted',
+          message: 'Only Master Admin (Parth Amilkanthwar) can edit Core Committee Lead profiles.',
+        });
+      } else {
+        addToast({
+          type: 'error',
+          title: 'Access Restricted',
+          message: `You can only edit members belonging to your own domain (${user?.domain}).`,
+        });
+      }
+      return;
+    }
+
     setEditingMember(m);
     setFormData({
       name: m.name,
@@ -123,20 +146,53 @@ export default function TeamMembers() {
       return;
     }
 
-    const username = formData.name.toLowerCase().trim().replace(/\s+/g, '.');
-
     if (editingMember) {
+      if (!canEditMember(editingMember)) {
+        addToast({
+          type: 'error',
+          title: 'Permission Denied',
+          message: 'Only Master Admin can modify Core Committee Lead profiles.',
+        });
+        return;
+      }
+
+      const assignedDomain: ECellDomain = isMasterAdmin()
+        ? formData.department
+        : (editingMember.department as ECellDomain);
+      const assignedRole: MemberRole = isMasterAdmin() ? formData.role : editingMember.role;
+
       const updated: Member = {
         ...editingMember,
         ...formData,
+        department: assignedDomain,
+        role: assignedRole,
         updated_at: new Date().toISOString(),
       };
       dispatch({ type: 'UPDATE_MEMBER', payload: updated });
       addToast({ type: 'success', title: 'Member Updated', message: `${formData.name}'s profile saved.` });
     } else {
+      // Adding a new member
+      if (!canAddMemberToDomain(formData.department)) {
+        addToast({
+          type: 'error',
+          title: 'Permission Denied',
+          message: `You can only add members to your own domain (${user?.domain}).`,
+        });
+        return;
+      }
+
+      const assignedDomain = isMasterAdmin()
+        ? formData.department
+        : ((user?.domain as ECellDomain) || formData.department);
+      const assignedRole: MemberRole = isMasterAdmin() ? formData.role : 'Member';
+
+      const username = formData.name.toLowerCase().trim().replace(/\s+/g, '.');
+
       const newMember: Member = {
         id: generateId('member'),
         ...formData,
+        department: assignedDomain,
+        role: assignedRole,
         email: formData.email || `${username}@ecell.jspmrscoe.in`,
         username,
         created_at: new Date().toISOString(),
@@ -153,10 +209,10 @@ export default function TeamMembers() {
         role: 'member',
         domain: newMember.department,
         email: newMember.email,
-        password: 'ecell@123',
+        password: DEFAULT_PASSWORD,
         status: 'active',
         must_change_password: false,
-        temp_password: 'ecell@123',
+        temp_password: DEFAULT_PASSWORD,
         created_at: new Date().toISOString(),
       };
       dispatch({ type: 'ADD_USER_ACCOUNT', payload: newAccount });
@@ -180,7 +236,7 @@ export default function TeamMembers() {
       addToast({
         type: 'success',
         title: 'Member Added Directly',
-        message: `${formData.name} added to ${formData.department} and reflected on the roster.`,
+        message: `${formData.name} added to ${newMember.department} and reflected on the roster.`,
       });
     }
 
@@ -189,8 +245,12 @@ export default function TeamMembers() {
 
   const handleConfirmDelete = () => {
     if (!memberToDelete) return;
-    if (memberToDelete.role === 'Master Admin' || memberToDelete.role === 'President') {
-      addToast({ type: 'error', title: 'Action Denied', message: 'Executive accounts cannot be removed.' });
+    if (!canDeleteMember(memberToDelete)) {
+      addToast({
+        type: 'error',
+        title: 'Action Denied',
+        message: 'You do not have permission to remove this profile. Core Leads can only be managed by Master Admin.',
+      });
       setMemberToDelete(null);
       return;
     }
@@ -401,20 +461,30 @@ export default function TeamMembers() {
                     </div>
 
                     <div className="flex items-center gap-1">
-                      <button
-                        onClick={(e) => handleOpenEdit(member, e)}
-                        className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-dark-hover transition-colors"
-                        title="Edit profile"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      {member.role !== 'Master Admin' && member.role !== 'President' && (
+                      {canEditMember(member) ? (
+                        <button
+                          onClick={(e) => handleOpenEdit(member, e)}
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-dark-hover transition-colors cursor-pointer"
+                          title="Edit profile"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                      ) : isLeadMember(member) ? (
+                        <span
+                          className="p-1.5 text-gray-600 cursor-not-allowed inline-flex items-center"
+                          title="Core Committee Lead profile — Master Admin edit rights only"
+                        >
+                          <Lock className="h-3.5 w-3.5" />
+                        </span>
+                      ) : null}
+
+                      {canDeleteMember(member) && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             setMemberToDelete(member);
                           }}
-                          className="p-1.5 rounded-lg text-gray-400 hover:text-status-absent hover:bg-status-absent/10 transition-colors"
+                          className="p-1.5 rounded-lg text-gray-400 hover:text-status-absent hover:bg-status-absent/10 transition-colors cursor-pointer"
                           title="Delete member"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -488,7 +558,15 @@ export default function TeamMembers() {
       <Modal
         isOpen={isFormOpen}
         onClose={() => setIsFormOpen(false)}
-        title={editingMember ? `Edit Member: ${editingMember.name}` : 'Add Member to Domain'}
+        title={
+          editingMember
+            ? isLeadMember(editingMember)
+              ? `Edit Lead Profile: ${editingMember.name}`
+              : `Edit Member: ${editingMember.name}`
+            : user?.role === 'lead_admin'
+            ? `Add Member to ${user.domain}`
+            : 'Add New Member'
+        }
         size="lg"
       >
         <form onSubmit={handleSaveMember} className="space-y-4">
@@ -542,8 +620,9 @@ export default function TeamMembers() {
               <label className="block text-xs font-semibold text-gray-400 mb-1">Role in E-Cell</label>
               <select
                 value={formData.role}
+                disabled={!isMasterAdmin()}
                 onChange={(e) => setFormData({ ...formData, role: e.target.value as MemberRole })}
-                className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white focus:outline-none focus:border-accent-primary cursor-pointer"
+                className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white focus:outline-none focus:border-accent-primary cursor-pointer disabled:opacity-60"
               >
                 <option value="Member">Member</option>
                 {isMasterAdmin() && (
@@ -554,6 +633,11 @@ export default function TeamMembers() {
                   </>
                 )}
               </select>
+              {!isMasterAdmin() && (
+                <span className="text-[10px] text-gray-500 mt-1 block">
+                  Only Master Admin can assign Lead roles.
+                </span>
+              )}
             </div>
 
             <div>

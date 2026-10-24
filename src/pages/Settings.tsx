@@ -23,8 +23,20 @@ import {
 } from '../lib/demoData';
 
 export default function Settings() {
-  const { state, dispatch, addToast } = useApp();
+  const { state, dispatch, addToast, isMasterAdmin } = useApp();
   const { settings } = state;
+
+  if (!isMasterAdmin()) {
+    return (
+      <div className="p-8 text-center bg-dark-card border border-dark-border rounded-2xl max-w-lg mx-auto mt-12 space-y-3">
+        <Shield className="h-12 w-12 text-status-absent mx-auto" />
+        <h2 className="text-lg font-bold text-white">Access Restricted</h2>
+        <p className="text-xs text-gray-400">
+          System settings and policy configuration are restricted exclusively to Master Admin (Parth Amilkanthwar).
+        </p>
+      </div>
+    );
+  }
 
   // Form state
   const [formData, setFormData] = useState<AppSettings>({

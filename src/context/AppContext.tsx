@@ -20,7 +20,7 @@ import {
   generateDefaultSettings,
 } from '../lib/demoData';
 
-// Storage keys bumped to v3 for clean production slate (only 9 core leads, 0 past sessions)
+// Storage keys bumped for clean production slate (only 9 core leads, 0 past sessions)
 const STORAGE_KEYS = {
   MEMBERS_V3: 'ecell_members_v3_clean',
   SESSIONS_V3: 'ecell_sessions_v3_clean',
@@ -29,7 +29,7 @@ const STORAGE_KEYS = {
   AUDIT_V3: 'ecell_audit_v3_clean',
   ACCOUNTS_V3: 'ecell_accounts_v3_clean',
   SETTINGS_V3: 'ecell_settings_v3_clean',
-  AUTH_V3: 'ecell_auth_v3_clean',
+  AUTH_V4: 'ecell_auth_v4_strict', // Bumped to V4: requires explicit login, no auto-login
 };
 
 interface AuthState {
@@ -110,13 +110,20 @@ function initializeState(): AppState {
   const auditLogs = loadFromStorage(STORAGE_KEYS.AUDIT_V3, initialAudits);
   const settings = loadFromStorage(STORAGE_KEYS.SETTINGS_V3, initialSettings);
 
-  // Default login as Parth Amilkanthwar (Master Admin)
-  const defaultMasterAdmin =
-    userAccounts.find((u) => u.username === 'parth.amilkanthwar') || initialAccounts[0];
+  // Clear any legacy auth keys to prevent automatic logins from past sessions
+  try {
+    localStorage.removeItem('ecell_auth');
+    localStorage.removeItem('ecell_auth_v2');
+    localStorage.removeItem('ecell_auth_v3');
+    localStorage.removeItem('ecell_auth_v3_clean');
+  } catch (e) {
+    // ignore
+  }
 
-  const auth = loadFromStorage<AuthState>(STORAGE_KEYS.AUTH_V3, {
-    isAuthenticated: true,
-    user: defaultMasterAdmin,
+  // Strict initial auth state: NOT authenticated by default, requires manual login
+  const auth = loadFromStorage<AuthState>(STORAGE_KEYS.AUTH_V4, {
+    isAuthenticated: false,
+    user: null,
   });
 
   return {
@@ -383,6 +390,9 @@ interface AppContextType {
   canUploadMoM: (session: AttendanceSession) => boolean;
   canViewSession: (session: AttendanceSession) => boolean;
   canAddMemberToDomain: (domain: ECellDomain) => boolean;
+  canEditMember: (member: Member) => boolean;
+  canDeleteMember: (member: Member) => boolean;
+  isLeadMember: (member: Member) => boolean;
   getApplicableMembersForSession: (session: AttendanceSession) => Member[];
   getMemberAttendancePercentage: (memberId: string) => number | null;
   getOverallAttendancePercentage: (domainFilter?: ECellDomain | 'ALL') => number | null;
@@ -424,7 +434,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [state.settings]);
 
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.AUTH_V3, state.auth);
+    saveToStorage(STORAGE_KEYS.AUTH_V4, state.auth);
   }, [state.auth]);
 
   const addToast = useCallback((toast: Omit<ToastMessage, 'id'>) => {
@@ -457,6 +467,63 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const isMember = useCallback(() => {
     return user?.role === 'member';
   }, [user]);
+
+  // Check if a member is a Core Committee Lead
+  const isLeadMember = useCallback((m: Member): boolean => {
+    const coreUsernames = [
+      'parth.amilkanthwar',
+      'sarthak.mehta',
+      'yashraj.ghate',
+      'ayush.deshmukh',
+      'aryan.ingale',
+      'gargee.waghmare',
+      'samarth.dhatrak',
+      'vanshika.thakare',
+      'rohan.kalokhe',
+    ];
+    return (
+      m.role !== 'Member' ||
+      m.id.startsWith('lead-') ||
+      m.member_id.startsWith('EC-CORE-') ||
+      coreUsernames.includes(m.username || '')
+    );
+  }, []);
+
+  // ONLY Master Admin can edit Lead profiles; Leads can only edit members of their own domain
+  const canEditMember = useCallback(
+    (targetMember: Member) => {
+      if (!user) return false;
+      if (isLeadMember(targetMember)) {
+        return isMasterAdmin();
+      }
+      if (isMasterAdmin()) return true;
+      if (user.role === 'lead_admin') {
+        return user.domain === targetMember.department && targetMember.role === 'Member';
+      }
+      return false;
+    },
+    [user, isMasterAdmin, isLeadMember]
+  );
+
+  // ONLY Master Admin can remove leads; Leads can only remove regular members of their own domain
+  const canDeleteMember = useCallback(
+    (targetMember: Member) => {
+      if (!user) return false;
+      if (isLeadMember(targetMember)) {
+        if (!isMasterAdmin()) return false;
+        if (targetMember.username === 'parth.amilkanthwar' || targetMember.role === 'Master Admin') {
+          return false;
+        }
+        return true;
+      }
+      if (isMasterAdmin()) return true;
+      if (user.role === 'lead_admin') {
+        return user.domain === targetMember.department && targetMember.role === 'Member';
+      }
+      return false;
+    },
+    [user, isMasterAdmin, isLeadMember]
+  );
 
   // Can user add a member to a domain?
   const canAddMemberToDomain = useCallback(
@@ -619,6 +686,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         canUploadMoM,
         canViewSession,
         canAddMemberToDomain,
+        canEditMember,
+        canDeleteMember,
+        isLeadMember,
         getApplicableMembersForSession,
         getSessionMoM,
         getMemberAttendancePercentage,
