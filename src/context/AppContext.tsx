@@ -27,7 +27,7 @@ const STORAGE_KEYS = {
   RECORDS_V3: 'ecell_records_v3_clean',
   MOM_V3: 'ecell_mom_v3_clean',
   AUDIT_V3: 'ecell_audit_v3_clean',
-  ACCOUNTS_V3: 'ecell_accounts_v3_clean',
+  ACCOUNTS_V4: 'ecell_accounts_v4_unique', // Bumped to V4 with unique passwords for all leads
   SETTINGS_V3: 'ecell_settings_v3_clean',
   AUTH_V4: 'ecell_auth_v4_strict', // Bumped to V4: requires explicit login, no auto-login
 };
@@ -103,19 +103,23 @@ function initializeState(): AppState {
   const initialSettings = generateDefaultSettings();
 
   const members = loadFromStorage(STORAGE_KEYS.MEMBERS_V3, initialMembers);
-  const userAccounts = loadFromStorage(STORAGE_KEYS.ACCOUNTS_V3, initialAccounts);
+  const userAccounts = loadFromStorage(STORAGE_KEYS.ACCOUNTS_V4, initialAccounts);
   const sessions = loadFromStorage(STORAGE_KEYS.SESSIONS_V3, initialSessions);
   const records = loadFromStorage(STORAGE_KEYS.RECORDS_V3, initialRecords);
   const momDocuments = loadFromStorage(STORAGE_KEYS.MOM_V3, initialMoMs);
   const auditLogs = loadFromStorage(STORAGE_KEYS.AUDIT_V3, initialAudits);
   const settings = loadFromStorage(STORAGE_KEYS.SETTINGS_V3, initialSettings);
 
-  // Clear any legacy auth keys to prevent automatic logins from past sessions
+  // Clear any legacy auth/account keys to refresh unique lead passwords and prevent automatic logins
   try {
     localStorage.removeItem('ecell_auth');
     localStorage.removeItem('ecell_auth_v2');
     localStorage.removeItem('ecell_auth_v3');
     localStorage.removeItem('ecell_auth_v3_clean');
+    localStorage.removeItem('ecell_accounts');
+    localStorage.removeItem('ecell_accounts_v2');
+    localStorage.removeItem('ecell_accounts_v3');
+    localStorage.removeItem('ecell_accounts_v3_clean');
   } catch (e) {
     // ignore
   }
@@ -426,7 +430,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [state.auditLogs]);
 
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.ACCOUNTS_V3, state.userAccounts);
+    saveToStorage(STORAGE_KEYS.ACCOUNTS_V4, state.userAccounts);
   }, [state.userAccounts]);
 
   useEffect(() => {

@@ -29,6 +29,7 @@ export const CORE_LEADS: Array<{
   domain: ECellDomain;
   role: 'master_admin' | 'president' | 'general_secretary' | 'lead_admin';
   phone: string;
+  password: string;
 }> = [
   {
     name: 'Parth Amilkanthwar',
@@ -37,6 +38,7 @@ export const CORE_LEADS: Array<{
     domain: 'Finance Management',
     role: 'master_admin',
     phone: '+91 98220 11001',
+    password: 'Parth#FinAdmin$2026',
   },
   {
     name: 'Sarthak Mehta',
@@ -45,6 +47,7 @@ export const CORE_LEADS: Array<{
     domain: 'General E-Cell / Core Committee',
     role: 'president',
     phone: '+91 98220 11002',
+    password: 'Sarthak#Pres$2026',
   },
   {
     name: 'Yashraj Ghate',
@@ -53,6 +56,7 @@ export const CORE_LEADS: Array<{
     domain: 'General E-Cell / Core Committee',
     role: 'general_secretary', // Same rights as President
     phone: '+91 98220 11003',
+    password: 'Yashraj#GenSec$2026',
   },
   {
     name: 'Ayush Deshmukh',
@@ -61,6 +65,7 @@ export const CORE_LEADS: Array<{
     domain: 'Event Production & Curation',
     role: 'lead_admin',
     phone: '+91 98220 11004',
+    password: 'Ayush#Events$2026',
   },
   {
     name: 'Aryan Ingale',
@@ -69,6 +74,7 @@ export const CORE_LEADS: Array<{
     domain: 'Public Relations & Marketing',
     role: 'lead_admin',
     phone: '+91 98220 11005',
+    password: 'Aryan#Market$2026',
   },
   {
     name: 'Gargee Waghmare',
@@ -77,6 +83,7 @@ export const CORE_LEADS: Array<{
     domain: 'Graphics Design',
     role: 'lead_admin',
     phone: '+91 98220 11006',
+    password: 'Gargee#Design$2026',
   },
   {
     name: 'Samarth Dhatrak',
@@ -85,6 +92,7 @@ export const CORE_LEADS: Array<{
     domain: 'Technical & Data Management',
     role: 'lead_admin',
     phone: '+91 98220 11007',
+    password: 'Samarth#Tech$2026',
   },
   {
     name: 'Vanshika Thakare',
@@ -93,6 +101,7 @@ export const CORE_LEADS: Array<{
     domain: 'Content Development',
     role: 'lead_admin',
     phone: '+91 98220 11008',
+    password: 'Vanshika#Content$2026',
   },
   {
     name: 'Rohan Kalokhe',
@@ -101,10 +110,11 @@ export const CORE_LEADS: Array<{
     domain: 'Social Media',
     role: 'lead_admin',
     phone: '+91 98220 11009',
+    password: 'Rohan#Social$2026',
   },
 ];
 
-// Simple common password for all leads for easy login and hosting
+// Fallback password for newly added general members
 export const DEFAULT_PASSWORD = 'ecell@123';
 
 export function generateAllMembers(): Member[] {
@@ -144,10 +154,10 @@ export function generateUserAccounts(): UserAccount[] {
     role: lead.role,
     domain: lead.domain,
     email: `${lead.username}@ecell.jspmrscoe.in`,
-    password: DEFAULT_PASSWORD,
+    password: lead.password,
     status: 'active',
     must_change_password: false,
-    temp_password: DEFAULT_PASSWORD,
+    temp_password: lead.password,
     last_login: new Date().toISOString(),
     created_at: now,
   }));

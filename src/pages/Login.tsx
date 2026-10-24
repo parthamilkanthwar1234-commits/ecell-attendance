@@ -55,11 +55,10 @@ export default function Login() {
         return;
       }
 
-      // Verify Password
+      // Verify Password (strictly against user's assigned unique credentials)
       const validPasswords = [
         matchedUser.password,
         matchedUser.temp_password,
-        DEFAULT_PASSWORD,
       ].filter(Boolean);
 
       if (!validPasswords.includes(password)) {
