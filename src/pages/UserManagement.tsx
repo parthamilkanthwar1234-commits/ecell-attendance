@@ -297,7 +297,9 @@ export default function UserManagement() {
             <option value="ALL">All Roles ({userAccounts.length})</option>
             <option value="master_admin">Master Admin (Parth)</option>
             <option value="president">President (Sarthak)</option>
+            <option value="general_secretary">General Secretary (Yashraj)</option>
             <option value="lead_admin">Lead Admins (Domain Leads)</option>
+            <option value="co_lead">Domain Co-Leads</option>
             <option value="member">General Body Members</option>
           </select>
         </div>
@@ -355,7 +357,9 @@ export default function UserManagement() {
                           className="px-2.5 py-1 bg-dark-bg border border-dark-border rounded-lg text-[11px] text-white focus:outline-none focus:border-accent-primary cursor-pointer font-semibold"
                         >
                           <option value="president">President (Read-Only)</option>
-                          <option value="lead_admin">Lead Admin</option>
+                          <option value="general_secretary">General Secretary (Read-Only)</option>
+                          <option value="lead_admin">Domain Lead</option>
+                          <option value="co_lead">Domain Co-Lead</option>
                           <option value="member">Member</option>
                         </select>
                       )}
@@ -540,8 +544,10 @@ export default function UserManagement() {
               onChange={(e) => setNewUser({ ...newUser, role: e.target.value as UserRole })}
               className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white focus:outline-none focus:border-accent-primary cursor-pointer"
             >
-              <option value="lead_admin">Lead Admin</option>
+              <option value="lead_admin">Domain Lead</option>
+              <option value="co_lead">Domain Co-Lead</option>
               <option value="president">President (Read-Only)</option>
+              <option value="general_secretary">General Secretary (Read-Only)</option>
               <option value="member">General Body Member</option>
             </select>
           </div>

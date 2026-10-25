@@ -429,6 +429,7 @@ interface AppContextType {
   isPresident: () => boolean;
   isGeneralSecretary: () => boolean;
   isLeadAdmin: () => boolean;
+  isCoLead: () => boolean;
   isMember: () => boolean;
   canManageSession: (session: AttendanceSession) => boolean;
   canDeleteSession: (session: AttendanceSession) => boolean;
@@ -496,6 +497,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               role:
                 member.role === 'Domain Lead'
                   ? 'lead_admin'
+                  : member.role === 'Domain Co-Lead'
+                  ? 'co_lead'
                   : member.role === 'President'
                   ? 'president'
                   : member.role === 'General Secretary'
@@ -634,14 +637,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [user]);
 
   const isLeadAdmin = useCallback(() => {
-    return user?.role === 'lead_admin';
+    return user?.role === 'lead_admin' || user?.role === 'co_lead';
+  }, [user]);
+
+  const isCoLead = useCallback(() => {
+    return user?.role === 'co_lead';
   }, [user]);
 
   const isMember = useCallback(() => {
     return user?.role === 'member';
   }, [user]);
 
-  // Check if a member is a Core Committee Lead
+  // Check if a member is a Core Committee Lead or Co-Lead
   const isLeadMember = useCallback((m: Member): boolean => {
     const coreUsernames = [
       'parth.amilkanthwar',
@@ -675,16 +682,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [user]
   );
 
-  // Master Admin can edit anyone; Each user can edit their OWN profile; Leads can edit regular members of their own domain
+  // Master Admin can edit anyone; Each user can edit their OWN profile; Leads can edit Co-Leads & members of their own domain; Co-Leads can edit members of their own domain
   const canEditMember = useCallback(
     (targetMember: Member) => {
       if (!user) return false;
       if (isMasterAdmin()) return true;
       if (isSelf(targetMember)) return true;
       if (isLeadMember(targetMember)) {
+        // Domain Lead can edit Domain Co-Lead in their vertical
+        if (
+          user.role === 'lead_admin' &&
+          user.domain === targetMember.department &&
+          targetMember.role === 'Domain Co-Lead'
+        ) {
+          return true;
+        }
         return false;
       }
-      if (user.role === 'lead_admin') {
+      if (user.role === 'lead_admin' || user.role === 'co_lead') {
         return user.domain === targetMember.department && targetMember.role === 'Member';
       }
       return false;
@@ -692,20 +707,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [user, isMasterAdmin, isSelf, isLeadMember]
   );
 
-  // ONLY Master Admin can remove leads; Users cannot delete themselves; Leads can remove regular members of their own domain
+  // ONLY Master Admin can remove core leads; Leads can remove Co-Leads & members of their domain; Co-Leads can remove members of their domain
   const canDeleteMember = useCallback(
     (targetMember: Member) => {
       if (!user) return false;
       if (isSelf(targetMember)) return false;
       if (isLeadMember(targetMember)) {
-        if (!isMasterAdmin()) return false;
+        if (!isMasterAdmin()) {
+          // Domain Lead can remove Domain Co-Lead in their vertical
+          if (
+            user.role === 'lead_admin' &&
+            user.domain === targetMember.department &&
+            targetMember.role === 'Domain Co-Lead'
+          ) {
+            return true;
+          }
+          return false;
+        }
         if (targetMember.username === 'parth.amilkanthwar' || targetMember.role === 'Master Admin') {
           return false;
         }
         return true;
       }
       if (isMasterAdmin()) return true;
-      if (user.role === 'lead_admin') {
+      if (user.role === 'lead_admin' || user.role === 'co_lead') {
         return user.domain === targetMember.department && targetMember.role === 'Member';
       }
       return false;
@@ -719,7 +744,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!user) return false;
       if (user.role === 'master_admin') return true;
       if (user.role === 'president' || user.role === 'general_secretary') return true;
-      if (user.role === 'lead_admin') {
+      if (user.role === 'lead_admin' || user.role === 'co_lead') {
         return user.domain === targetDomain;
       }
       return false;
@@ -732,7 +757,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!user) return false;
       if (user.role === 'master_admin') return true;
       if (user.role === 'president' || user.role === 'general_secretary') return false; // Read-only by default
-      if (user.role === 'lead_admin') {
+      if (user.role === 'lead_admin' || user.role === 'co_lead') {
         if (domain === 'All Domains') return true;
         if (domain === 'General E-Cell / Core Committee') return true;
         return user.domain === domain;
@@ -747,7 +772,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!user) return false;
       if (user.role === 'master_admin') return true;
       if (user.role === 'president' || user.role === 'general_secretary') return false;
-      if (user.role === 'lead_admin') {
+      if (user.role === 'lead_admin' || user.role === 'co_lead') {
         if (session.domain === 'All Domains') return true;
         if (session.domain === 'General E-Cell / Core Committee') return true;
         return user.domain === session.domain;
@@ -781,7 +806,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!user) return false;
       if (user.role === 'master_admin') return true;
       if (user.role === 'president' || user.role === 'general_secretary') return false;
-      if (user.role === 'lead_admin') {
+      if (user.role === 'lead_admin' || user.role === 'co_lead') {
         if (session.domain === 'All Domains') return true;
         if (session.domain === 'General E-Cell / Core Committee') return true;
         return user.domain === session.domain;
@@ -801,7 +826,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       )
         return true;
       if (session.domain === 'All Domains') return true;
-      if (user.role === 'lead_admin') {
+      if (user.role === 'lead_admin' || user.role === 'co_lead') {
         if (session.domain === 'General E-Cell / Core Committee') return true;
         return user.domain === session.domain;
       }
@@ -821,7 +846,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             m.role === 'Master Admin' ||
             m.role === 'President' ||
             m.role === 'General Secretary' ||
-            m.role === 'Domain Lead'
+            m.role === 'Domain Lead' ||
+            m.role === 'Domain Co-Lead'
         );
       }
       // Domain specific: filter members assigned to this domain
@@ -887,6 +913,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         isPresident,
         isGeneralSecretary,
         isLeadAdmin,
+        isCoLead,
         isMember,
         canManageSession,
         canDeleteSession,

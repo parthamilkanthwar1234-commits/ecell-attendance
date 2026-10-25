@@ -97,7 +97,11 @@ export default function Layout() {
                     {user.full_name}
                   </div>
                   <div className="text-[10px] text-gray-400 uppercase tracking-wider">
-                    {user.role.replace('_', ' ')}
+                    {user.role === 'co_lead'
+                      ? 'Domain Co-Lead'
+                      : user.role === 'lead_admin'
+                      ? 'Domain Lead'
+                      : user.role.replace('_', ' ')}
                   </div>
                 </div>
               </div>

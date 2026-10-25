@@ -1,4 +1,4 @@
-export type UserRole = 'master_admin' | 'president' | 'general_secretary' | 'lead_admin' | 'member';
+export type UserRole = 'master_admin' | 'president' | 'general_secretary' | 'lead_admin' | 'co_lead' | 'member';
 
 export type ECellDomain =
   | 'Event Production & Curation'
@@ -12,7 +12,7 @@ export type ECellDomain =
   | 'All Domains'
   | 'Unassigned';
 
-export type MemberRole = 'Master Admin' | 'President' | 'General Secretary' | 'Domain Lead' | 'Member';
+export type MemberRole = 'Master Admin' | 'President' | 'General Secretary' | 'Domain Lead' | 'Domain Co-Lead' | 'Member';
 
 export type EventCategory = string;
 

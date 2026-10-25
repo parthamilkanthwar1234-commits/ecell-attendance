@@ -44,8 +44,26 @@ const ROLES: MemberRole[] = [
   'President',
   'General Secretary',
   'Domain Lead',
+  'Domain Co-Lead',
   'Member',
 ];
+
+const getMemberRoleBadge = (role: MemberRole) => {
+  switch (role) {
+    case 'Master Admin':
+      return 'bg-accent-primary/20 text-accent-light border-accent-primary/40';
+    case 'President':
+      return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40';
+    case 'General Secretary':
+      return 'bg-amber-500/20 text-amber-400 border-amber-500/40';
+    case 'Domain Lead':
+      return 'bg-blue-500/20 text-blue-400 border-blue-500/40';
+    case 'Domain Co-Lead':
+      return 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40';
+    default:
+      return 'bg-dark-bg text-gray-300 border-dark-border';
+  }
+};
 
 export default function TeamMembers() {
   const {
@@ -177,7 +195,15 @@ export default function TeamMembers() {
         const assignedDomain: ECellDomain = isMasterAdmin()
           ? formData.department
           : (editingMember.department as ECellDomain);
-        const assignedRole: MemberRole = isMasterAdmin() ? formData.role : editingMember.role;
+        
+        let assignedRole: MemberRole = editingMember.role;
+        if (isMasterAdmin()) {
+          assignedRole = formData.role;
+        } else if (user?.role === 'lead_admin' || user?.role === 'co_lead') {
+          if (formData.role === 'Domain Co-Lead' || formData.role === 'Member') {
+            assignedRole = formData.role;
+          }
+        }
 
         const updated: Member = {
           ...editingMember,
@@ -197,14 +223,35 @@ export default function TeamMembers() {
           if (error) console.error('Cloud member update error:', error);
         }
 
-        // If user is editing their own profile, synchronize the active auth and userAccount state
-        if (editingSelf && user) {
-          const updatedUser: UserAccount = {
-            ...user,
+        // If user is editing their own profile or changing roles, synchronize active userAccount state
+        const targetAccount = state.userAccounts.find(
+          (a) =>
+            a.username.toLowerCase() === updated.username?.toLowerCase() ||
+            (!!updated.email && a.email.toLowerCase() === updated.email.toLowerCase()) ||
+            a.full_name.toLowerCase() === updated.name.toLowerCase()
+        );
+        if (targetAccount) {
+          const updatedAccount: UserAccount = {
+            ...targetAccount,
             full_name: updated.name,
             email: updated.email,
+            role:
+              updated.role === 'Domain Co-Lead'
+                ? 'co_lead'
+                : updated.role === 'Domain Lead'
+                ? 'lead_admin'
+                : updated.role === 'Master Admin'
+                ? 'master_admin'
+                : updated.role === 'President'
+                ? 'president'
+                : updated.role === 'General Secretary'
+                ? 'general_secretary'
+                : 'member',
           };
-          dispatch({ type: 'UPDATE_USER_ACCOUNT', payload: updatedUser });
+          dispatch({ type: 'UPDATE_USER_ACCOUNT', payload: updatedAccount });
+          if (editingSelf) {
+            dispatch({ type: 'LOGIN', payload: updatedAccount });
+          }
         }
 
         addToast({
@@ -227,7 +274,11 @@ export default function TeamMembers() {
         const assignedDomain = isMasterAdmin()
           ? formData.department
           : ((user?.domain as ECellDomain) || formData.department);
-        const assignedRole: MemberRole = isMasterAdmin() ? formData.role : 'Member';
+        const assignedRole: MemberRole = isMasterAdmin()
+          ? formData.role
+          : user?.role === 'lead_admin' || user?.role === 'co_lead'
+          ? (formData.role === 'Domain Co-Lead' ? 'Domain Co-Lead' : 'Member')
+          : 'Member';
 
         const username = formData.name.toLowerCase().trim().replace(/\s+/g, '.');
 
@@ -256,7 +307,7 @@ export default function TeamMembers() {
           id: generateId('user'),
           full_name: newMember.name,
           username,
-          role: 'member',
+          role: newMember.role === 'Domain Co-Lead' ? 'co_lead' : 'member',
           domain: newMember.department,
           email: newMember.email,
           password: DEFAULT_PASSWORD,
@@ -272,7 +323,7 @@ export default function TeamMembers() {
           payload: {
             id: `audit-${Date.now()}`,
             actor_id: user?.id || 'lead',
-            actor_name: user?.full_name || 'Domain Lead',
+            actor_name: user?.full_name || (user?.role === 'co_lead' ? 'Domain Co-Lead' : 'Domain Lead'),
             actor_role: user?.role || 'lead_admin',
             action_type: 'MEMBER_ADDED',
             entity_type: 'MEMBER',
@@ -591,7 +642,11 @@ export default function TeamMembers() {
 
                   {/* Badges for Role & Domain */}
                   <div className="flex flex-wrap gap-1.5 mb-3">
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-accent-primary/10 text-accent-light border border-accent-primary/20 font-bold">
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${getMemberRoleBadge(
+                        member.role
+                      )}`}
+                    >
                       {member.role}
                     </span>
                     <span
@@ -661,7 +716,7 @@ export default function TeamMembers() {
               : isLeadMember(editingMember)
               ? `Edit Lead Profile: ${editingMember.name}`
               : `Edit Member: ${editingMember.name}`
-            : user?.role === 'lead_admin'
+            : user?.role === 'lead_admin' || user?.role === 'co_lead'
             ? `Add Member to ${user.domain}`
             : 'Add New Member'
         }
@@ -724,21 +779,36 @@ export default function TeamMembers() {
               <label className="block text-xs font-semibold text-gray-400 mb-1">Role in E-Cell</label>
               <select
                 value={formData.role}
-                disabled={!isMasterAdmin()}
+                disabled={
+                  !isMasterAdmin() &&
+                  (!user || (user.role !== 'lead_admin' && user.role !== 'co_lead'))
+                }
                 onChange={(e) => setFormData({ ...formData, role: e.target.value as MemberRole })}
                 className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white focus:outline-none focus:border-accent-primary cursor-pointer disabled:opacity-60"
               >
-                <option value="Member">Member</option>
-                <option value="Domain Lead">Domain Lead</option>
-                <option value="General Secretary">General Secretary</option>
-                <option value="President">President</option>
-                <option value="Master Admin">Master Admin</option>
+                {isMasterAdmin() ? (
+                  <>
+                    <option value="Member">Member</option>
+                    <option value="Domain Co-Lead">Domain Co-Lead</option>
+                    <option value="Domain Lead">Domain Lead</option>
+                    <option value="General Secretary">General Secretary</option>
+                    <option value="President">President</option>
+                    <option value="Master Admin">Master Admin</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="Member">Member</option>
+                    <option value="Domain Co-Lead">Domain Co-Lead</option>
+                  </>
+                )}
               </select>
               {!isMasterAdmin() && (
                 <span className="text-[10px] text-gray-500 mt-1 block">
                   {editingMember && isSelf(editingMember)
                     ? 'Designation is locked. Only Master Admin can modify Lead roles.'
-                    : 'Only Master Admin can assign Lead roles.'}
+                    : user?.role === 'lead_admin' || user?.role === 'co_lead'
+                    ? 'You can designate members as Member or Domain Co-Lead in your domain.'
+                    : 'Only Master Admin and Domain Leads can assign roles.'}
                 </span>
               )}
             </div>

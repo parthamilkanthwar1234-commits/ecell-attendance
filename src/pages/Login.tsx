@@ -61,6 +61,8 @@ export default function Login() {
             role:
               matchedMember.role === 'Domain Lead'
                 ? 'lead_admin'
+                : matchedMember.role === 'Domain Co-Lead'
+                ? 'co_lead'
                 : matchedMember.role === 'President'
                 ? 'president'
                 : matchedMember.role === 'General Secretary'
@@ -97,6 +99,8 @@ export default function Login() {
               role:
                 directMatch.role === 'Domain Lead'
                   ? 'lead_admin'
+                  : directMatch.role === 'Domain Co-Lead'
+                  ? 'co_lead'
                   : directMatch.role === 'President'
                   ? 'president'
                   : directMatch.role === 'General Secretary'

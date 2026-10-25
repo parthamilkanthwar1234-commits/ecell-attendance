@@ -172,7 +172,7 @@ export default function MeetingsEvents() {
     }
 
     // Role verification for domain assignment
-    if (!isMasterAdmin() && user?.role === 'lead_admin') {
+    if (!isMasterAdmin() && (user?.role === 'lead_admin' || user?.role === 'co_lead')) {
       if (
         formData.domain !== user.domain &&
         formData.domain !== 'All Domains' &&
@@ -181,7 +181,7 @@ export default function MeetingsEvents() {
         addToast({
           type: 'error',
           title: 'Permission Denied',
-          message: `Lead Admins can only schedule meetings for their domain (${user.domain}).`,
+          message: `Leads can only schedule meetings for their domain (${user.domain}).`,
         });
         return;
       }

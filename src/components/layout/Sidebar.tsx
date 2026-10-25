@@ -91,6 +91,8 @@ export default function Sidebar() {
         return 'bg-amber-500/20 text-status-late border-amber-500/40';
       case 'lead_admin':
         return 'bg-status-success/20 text-status-success border-status-success/40';
+      case 'co_lead':
+        return 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40';
       default:
         return 'bg-dark-bg text-gray-400 border-dark-border';
     }
@@ -105,7 +107,9 @@ export default function Sidebar() {
       case 'general_secretary':
         return 'Gen Secretary';
       case 'lead_admin':
-        return 'Lead Admin';
+        return 'Domain Lead';
+      case 'co_lead':
+        return 'Domain Co-Lead';
       default:
         return 'Member';
     }
