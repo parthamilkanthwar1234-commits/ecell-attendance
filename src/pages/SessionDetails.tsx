@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Calendar,
@@ -77,22 +77,34 @@ export default function SessionDetails() {
   const [attendanceMap, setAttendanceMap] = useState<
     Record<string, { status: AttendanceStatus; remarks: string }>
   >({});
+  const [isDirty, setIsDirty] = useState(false);
+  const loadedSessionIdRef = useRef<string | null>(null);
 
-  // Reliably sync attendance map whenever records or applicable members change
+  // Reliably sync attendance map when session loads; NEVER overwrite active user edits
   useEffect(() => {
-    const map: Record<string, { status: AttendanceStatus; remarks: string }> = {};
-    const existingMap = new Map(existingRecords.map((r) => [r.member_id, r]));
+    if (!session) return;
+    const isNewSession = loadedSessionIdRef.current !== session.id;
 
-    applicableMembers.forEach((member) => {
-      const rec = existingMap.get(member.id);
-      if (rec) {
-        map[member.id] = { status: rec.status, remarks: rec.remarks || '' };
-      } else {
-        map[member.id] = { status: 'absent', remarks: '' };
+    if (isNewSession || !isDirty) {
+      const map: Record<string, { status: AttendanceStatus; remarks: string }> = {};
+      const existingMap = new Map(existingRecords.map((r) => [r.member_id, r]));
+
+      applicableMembers.forEach((member) => {
+        const rec = existingMap.get(member.id);
+        if (rec) {
+          map[member.id] = { status: rec.status, remarks: rec.remarks || '' };
+        } else {
+          // If no existing record exists yet, default to 'present', NEVER 'absent'
+          map[member.id] = { status: 'present', remarks: '' };
+        }
+      });
+      setAttendanceMap(map);
+      if (isNewSession) {
+        loadedSessionIdRef.current = session.id;
+        setIsDirty(false);
       }
-    });
-    setAttendanceMap(map);
-  }, [existingRecords, applicableMembers]);
+    }
+  }, [session?.id, existingRecords.length, isDirty, applicableMembers.length]);
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSavingAttendance, setIsSavingAttendance] = useState(false);
@@ -141,23 +153,32 @@ export default function SessionDetails() {
   // Status Change Handlers
   const handleStatusChange = (memberId: string, status: AttendanceStatus) => {
     if (!userCanManage) return;
+    setIsDirty(true);
     setAttendanceMap((prev) => ({
       ...prev,
-      [memberId]: { ...prev[memberId], status },
+      [memberId]: {
+        status,
+        remarks: prev[memberId]?.remarks || '',
+      },
     }));
   };
 
   const handleRemarksChange = (memberId: string, remarks: string) => {
     if (!userCanManage) return;
+    setIsDirty(true);
     setAttendanceMap((prev) => ({
       ...prev,
-      [memberId]: { ...prev[memberId], remarks },
+      [memberId]: {
+        status: prev[memberId]?.status || 'present',
+        remarks,
+      },
     }));
   };
 
   // Bulk set
   const handleBulkSet = (status: AttendanceStatus) => {
     if (!userCanManage) return;
+    setIsDirty(true);
     const updated: Record<string, { status: AttendanceStatus; remarks: string }> = {};
     applicableMembers.forEach((m) => {
       updated[m.id] = {
@@ -170,7 +191,7 @@ export default function SessionDetails() {
 
   // Live Statistics
   const stats = useMemo(() => {
-    const list = applicableMembers.map((m) => attendanceMap[m.id]?.status || 'absent');
+    const list = applicableMembers.map((m) => attendanceMap[m.id]?.status || 'present');
     const present = list.filter((s) => s === 'present').length;
     const late = list.filter((s) => s === 'late').length;
     const absent = list.filter((s) => s === 'absent').length;
@@ -245,6 +266,7 @@ export default function SessionDetails() {
 
       // 3. Immediately refresh and sync
       await syncFromCloud();
+      setIsDirty(false);
 
       addToast({
         type: 'success',
@@ -703,16 +725,27 @@ export default function SessionDetails() {
         {/* Save Bar */}
         {userCanManage && (
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-dark-border">
-            <span className="text-xs text-gray-400">
-              Changes will be recorded in the official audit trail.
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400">
+                Changes will be recorded in the official audit trail.
+              </span>
+              {isDirty && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-status-late border border-amber-500/30 animate-pulse">
+                  Unsaved Changes
+                </span>
+              )}
+            </div>
             <button
               onClick={() => setIsConfirmSaveOpen(true)}
               disabled={isSavingAttendance}
-              className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-accent-primary hover:bg-blue-600 disabled:opacity-50 text-white font-semibold text-xs shadow-lg shadow-blue-500/20 cursor-pointer"
+              className={`inline-flex items-center gap-2 px-5 py-2 rounded-xl text-white font-semibold text-xs shadow-lg cursor-pointer transition-all ${
+                isDirty
+                  ? 'bg-status-success hover:bg-green-600 shadow-green-500/20 ring-2 ring-green-500/40'
+                  : 'bg-accent-primary hover:bg-blue-600 shadow-blue-500/20'
+              } disabled:opacity-50`}
             >
               <Save className="h-4 w-4" />
-              <span>{isSavingAttendance ? 'Saving & Syncing...' : 'Save & Update Attendance'}</span>
+              <span>{isSavingAttendance ? 'Saving & Syncing...' : isDirty ? 'Save Changes Now' : 'Save & Update Attendance'}</span>
             </button>
           </div>
         )}

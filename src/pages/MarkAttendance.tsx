@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ClipboardCheck,
@@ -95,6 +95,8 @@ export default function MarkAttendance() {
   const [attendanceMap, setAttendanceMap] = useState<
     Record<string, { status: AttendanceStatus; remarks: string }>
   >({});
+  const [isDirty, setIsDirty] = useState(false);
+  const loadedSessionIdRef = useRef<string | null>(null);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [auditReason, setAuditReason] = useState('');
   const [isNewSessionModalOpen, setIsNewSessionModalOpen] = useState(false);
@@ -143,53 +145,69 @@ export default function MarkAttendance() {
   const hasExistingRecords = existingSessionRecords.length > 0;
   const userCanManage = currentSession ? canManageSession(currentSession) : false;
 
-  // Sync attendanceMap when session changes
+  // Sync attendanceMap when session changes; NEVER overwrite dirty in-progress edits
   useEffect(() => {
     if (!selectedSessionId || applicableMembers.length === 0) {
-      setAttendanceMap({});
+      if (!selectedSessionId) setAttendanceMap({});
       return;
     }
 
-    const newMap: Record<string, { status: AttendanceStatus; remarks: string }> = {};
-    const existingMap = new Map(existingSessionRecords.map((r) => [r.member_id, r]));
+    const isNewSession = loadedSessionIdRef.current !== selectedSessionId;
+    if (isNewSession || !isDirty) {
+      const newMap: Record<string, { status: AttendanceStatus; remarks: string }> = {};
+      const existingMap = new Map(existingSessionRecords.map((r) => [r.member_id, r]));
 
-    applicableMembers.forEach((member) => {
-      const existing = existingMap.get(member.id);
-      if (existing) {
-        newMap[member.id] = {
-          status: existing.status,
-          remarks: existing.remarks || '',
-        };
-      } else {
-        newMap[member.id] = {
-          status: 'present',
-          remarks: '',
-        };
+      applicableMembers.forEach((member) => {
+        const existing = existingMap.get(member.id);
+        if (existing) {
+          newMap[member.id] = {
+            status: existing.status,
+            remarks: existing.remarks || '',
+          };
+        } else {
+          newMap[member.id] = {
+            status: 'present',
+            remarks: '',
+          };
+        }
+      });
+
+      setAttendanceMap(newMap);
+      if (isNewSession) {
+        loadedSessionIdRef.current = selectedSessionId;
+        setIsDirty(false);
       }
-    });
+    }
+  }, [selectedSessionId, applicableMembers.length, existingSessionRecords.length, isDirty]);
 
-    setAttendanceMap(newMap);
-  }, [selectedSessionId, applicableMembers, existingSessionRecords]);
-
-  // Status Change
+  // Status Change Handlers
   const handleStatusChange = (memberId: string, status: AttendanceStatus) => {
     if (!userCanManage) return;
+    setIsDirty(true);
     setAttendanceMap((prev) => ({
       ...prev,
-      [memberId]: { ...prev[memberId], status },
+      [memberId]: {
+        status,
+        remarks: prev[memberId]?.remarks || '',
+      },
     }));
   };
 
   const handleRemarksChange = (memberId: string, remarks: string) => {
     if (!userCanManage) return;
+    setIsDirty(true);
     setAttendanceMap((prev) => ({
       ...prev,
-      [memberId]: { ...prev[memberId], remarks },
+      [memberId]: {
+        status: prev[memberId]?.status || 'present',
+        remarks,
+      },
     }));
   };
 
   const handleMarkAll = (status: AttendanceStatus) => {
     if (!userCanManage) return;
+    setIsDirty(true);
     const updated: Record<string, { status: AttendanceStatus; remarks: string }> = {};
     applicableMembers.forEach((m) => {
       updated[m.id] = {
@@ -254,7 +272,7 @@ export default function MarkAttendance() {
     setIsSaving(true);
 
     const newRecords: AttendanceRecord[] = applicableMembers.map((member) => {
-      const entry = attendanceMap[member.id] || { status: 'absent', remarks: '' };
+      const entry = attendanceMap[member.id] || { status: 'present', remarks: '' };
       return {
         id: `rec-${currentSession.id}-${member.id}`,
         session_id: currentSession.id,
@@ -305,6 +323,7 @@ export default function MarkAttendance() {
 
       // 3. Immediately refresh and sync
       await syncFromCloud();
+      setIsDirty(false);
 
       addToast({
         type: 'success',
@@ -599,16 +618,27 @@ export default function MarkAttendance() {
         {/* Save Bar Footer */}
         {userCanManage && (
           <div className="p-4 bg-dark-bg border-t border-dark-border flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="text-xs text-gray-400">
-              Audit log automatically tracks all submissions and corrections.
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400">
+                Audit log automatically tracks all submissions and corrections.
+              </span>
+              {isDirty && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-status-late border border-amber-500/30 animate-pulse">
+                  Unsaved Changes
+                </span>
+              )}
             </div>
             <button
               onClick={() => setIsConfirmOpen(true)}
               disabled={!currentSession}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-accent-primary hover:bg-blue-600 text-white font-semibold text-sm shadow-lg shadow-blue-500/20 transition-all cursor-pointer disabled:opacity-50"
+              className={`w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-white font-semibold text-sm shadow-lg transition-all cursor-pointer disabled:opacity-50 ${
+                isDirty
+                  ? 'bg-status-success hover:bg-green-600 shadow-green-500/20 ring-2 ring-green-500/40'
+                  : 'bg-accent-primary hover:bg-blue-600 shadow-blue-500/20'
+              }`}
             >
               <Save className="h-4 w-4" />
-              <span>Confirm & Save Attendance</span>
+              <span>{isDirty ? 'Save Changes Now' : 'Confirm & Save Attendance'}</span>
             </button>
           </div>
         )}
