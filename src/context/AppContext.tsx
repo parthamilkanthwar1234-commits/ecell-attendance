@@ -18,6 +18,7 @@ import {
   generateMinutesOfMeeting,
   generateAuditLogs,
   generateDefaultSettings,
+  DEFAULT_PASSWORD,
 } from '../lib/demoData';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
@@ -69,6 +70,7 @@ type Action =
   | { type: 'ADD_AUDIT_LOG'; payload: AuditLog }
   | { type: 'UPDATE_USER_ACCOUNT'; payload: UserAccount }
   | { type: 'ADD_USER_ACCOUNT'; payload: UserAccount }
+  | { type: 'SET_USER_ACCOUNTS'; payload: UserAccount[] }
   | { type: 'UPDATE_SETTINGS'; payload: Partial<AppSettings> }
   | { type: 'LOGIN'; payload: UserAccount }
   | { type: 'LOGOUT' }
@@ -378,6 +380,9 @@ function appReducer(state: AppState, action: Action): AppState {
     case 'ADD_USER_ACCOUNT':
       return { ...state, userAccounts: [...state.userAccounts, action.payload] };
 
+    case 'SET_USER_ACCOUNTS':
+      return { ...state, userAccounts: action.payload };
+
     case 'UPDATE_SETTINGS':
       return {
         ...state,
@@ -475,6 +480,41 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           }
         });
         dispatch({ type: 'SET_MEMBERS', payload: mergedMembers });
+
+        // Synchronize User Accounts so every cloud member has a valid login across all devices
+        const coreAccounts = generateUserAccounts();
+        const coreUsernames = new Set(coreAccounts.map((a) => a.username.toLowerCase()));
+        const allAccounts: UserAccount[] = [...coreAccounts];
+
+        mergedMembers.forEach((member) => {
+          const uname = (member.username || member.name.toLowerCase().replace(/\s+/g, '.')).trim();
+          if (!coreUsernames.has(uname)) {
+            allAccounts.push({
+              id: `user-${member.id}`,
+              full_name: member.name,
+              username: uname,
+              role:
+                member.role === 'Domain Lead'
+                  ? 'lead_admin'
+                  : member.role === 'President'
+                  ? 'president'
+                  : member.role === 'General Secretary'
+                  ? 'general_secretary'
+                  : member.role === 'Master Admin'
+                  ? 'master_admin'
+                  : 'member',
+              domain: member.department,
+              email: member.email,
+              password: DEFAULT_PASSWORD,
+              temp_password: DEFAULT_PASSWORD,
+              status: member.status === 'inactive' ? 'disabled' : 'active',
+              must_change_password: false,
+              created_at: member.created_at || new Date().toISOString(),
+            });
+            coreUsernames.add(uname);
+          }
+        });
+        dispatch({ type: 'SET_USER_ACCOUNTS', payload: allAccounts });
       } else {
         // Seed cloud database with initial 9 core leads if cloud is empty
         const initialCore = generateAllMembers();
@@ -537,26 +577,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
   }, [syncFromCloud]);
 
-  // Local & Cloud Persistence
+  // Local Persistence (Direct Supabase mutations are executed on specific actions to prevent write storms)
   useEffect(() => {
     saveToStorage(STORAGE_KEYS.MEMBERS_V3, state.members);
-    if (isSupabaseConfigured() && supabase && state.members.length > 0) {
-      supabase.from('members').upsert(state.members).then();
-    }
   }, [state.members]);
 
   useEffect(() => {
     saveToStorage(STORAGE_KEYS.SESSIONS_V3, state.sessions);
-    if (isSupabaseConfigured() && supabase && state.sessions.length > 0) {
-      supabase.from('sessions').upsert(state.sessions).then();
-    }
   }, [state.sessions]);
 
   useEffect(() => {
     saveToStorage(STORAGE_KEYS.RECORDS_V3, state.records);
-    if (isSupabaseConfigured() && supabase && state.records.length > 0) {
-      supabase.from('records').upsert(state.records).then();
-    }
   }, [state.records]);
 
   useEffect(() => {

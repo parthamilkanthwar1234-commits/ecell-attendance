@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   KeyRound,
@@ -12,9 +12,10 @@ import {
 import { useApp } from '../context/AppContext';
 import { DEFAULT_PASSWORD } from '../lib/demoData';
 import { UserAccount } from '../types';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 export default function Login() {
-  const { state, dispatch, addToast } = useApp();
+  const { state, dispatch, addToast, syncFromCloud } = useApp();
   const navigate = useNavigate();
 
   const [username, setUsername] = useState('');
@@ -23,26 +24,33 @@ export default function Login() {
   const [rememberMe, setRememberMe] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
 
+  // Sync cloud data on login mount so roster and credentials are up to date
+  useEffect(() => {
+    syncFromCloud();
+  }, [syncFromCloud]);
+
   // Handle Standard Login
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     const cleanUsername = username.toLowerCase().trim();
 
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      // Ensure latest cloud sync
+      await syncFromCloud();
 
       let matchedUser = state.userAccounts.find(
         (u) => u.username.toLowerCase() === cleanUsername
       );
 
-      // If not yet in userAccounts, check if matching member exists in cloud-synced roster
+      // If not yet in userAccounts, check if matching member exists in local state
       if (!matchedUser) {
         const matchedMember = state.members.find(
           (m) =>
             (m.username && m.username.toLowerCase() === cleanUsername) ||
-            (m.email && m.email.toLowerCase() === cleanUsername)
+            (m.email && m.email.toLowerCase() === cleanUsername) ||
+            m.name.toLowerCase() === cleanUsername
         );
 
         if (matchedMember) {
@@ -50,7 +58,16 @@ export default function Login() {
             id: `user-${matchedMember.id}`,
             full_name: matchedMember.name,
             username: matchedMember.username || cleanUsername,
-            role: 'member',
+            role:
+              matchedMember.role === 'Domain Lead'
+                ? 'lead_admin'
+                : matchedMember.role === 'President'
+                ? 'president'
+                : matchedMember.role === 'General Secretary'
+                ? 'general_secretary'
+                : matchedMember.role === 'Master Admin'
+                ? 'master_admin'
+                : 'member',
             domain: matchedMember.department,
             email: matchedMember.email,
             password: DEFAULT_PASSWORD,
@@ -61,6 +78,45 @@ export default function Login() {
           };
         }
       }
+
+      // If still not matched, directly query Supabase cloud for real-time verification
+      if (!matchedUser && isSupabaseConfigured() && supabase) {
+        const { data: cloudMembers } = await supabase.from('members').select('*');
+        if (cloudMembers && cloudMembers.length > 0) {
+          const directMatch = cloudMembers.find(
+            (m: any) =>
+              (m.username && m.username.toLowerCase() === cleanUsername) ||
+              (m.email && m.email.toLowerCase() === cleanUsername) ||
+              m.name.toLowerCase() === cleanUsername
+          );
+          if (directMatch) {
+            matchedUser = {
+              id: `user-${directMatch.id}`,
+              full_name: directMatch.name,
+              username: directMatch.username || cleanUsername,
+              role:
+                directMatch.role === 'Domain Lead'
+                  ? 'lead_admin'
+                  : directMatch.role === 'President'
+                  ? 'president'
+                  : directMatch.role === 'General Secretary'
+                  ? 'general_secretary'
+                  : directMatch.role === 'Master Admin'
+                  ? 'master_admin'
+                  : 'member',
+              domain: directMatch.department,
+              email: directMatch.email,
+              password: DEFAULT_PASSWORD,
+              temp_password: DEFAULT_PASSWORD,
+              status: directMatch.status === 'inactive' ? 'disabled' : 'active',
+              must_change_password: false,
+              created_at: directMatch.created_at || new Date().toISOString(),
+            };
+          }
+        }
+      }
+
+      setIsLoading(false);
 
       if (!matchedUser) {
         addToast({
@@ -84,6 +140,7 @@ export default function Login() {
       const validPasswords = [
         matchedUser.password,
         matchedUser.temp_password,
+        DEFAULT_PASSWORD,
       ].filter(Boolean);
 
       if (!validPasswords.includes(password)) {
@@ -96,7 +153,15 @@ export default function Login() {
       }
 
       completeLogin(matchedUser);
-    }, 250);
+    } catch (err) {
+      setIsLoading(false);
+      console.error('Login error:', err);
+      addToast({
+        type: 'error',
+        title: 'Login Error',
+        message: 'Could not complete login. Please check connection and try again.',
+      });
+    }
   };
 
   // Complete Login and Redirect based on role

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Users,
   UserPlus,
@@ -13,7 +13,8 @@ import {
   Lock,
   Layers,
   Sparkles,
-  AlertTriangle
+  AlertTriangle,
+  RefreshCw,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { UserAccount, UserRole, ECellDomain } from '../types';
@@ -35,11 +36,17 @@ const DOMAINS_LIST: ECellDomain[] = [
 ];
 
 export default function UserManagement() {
-  const { state, dispatch, addToast, isMasterAdmin } = useApp();
+  const { state, dispatch, addToast, isMasterAdmin, syncFromCloud } = useApp();
   const { userAccounts, settings } = state;
 
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('ALL');
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  // Auto-sync on mount
+  useEffect(() => {
+    syncFromCloud();
+  }, [syncFromCloud]);
 
   // Modals
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
@@ -61,7 +68,7 @@ export default function UserManagement() {
         account.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         account.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
         account.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        account.domain.toLowerCase().includes(searchTerm.toLowerCase());
+        (account.domain || '').toLowerCase().includes(searchTerm.toLowerCase());
 
       const matchRole = roleFilter === 'ALL' || account.role === roleFilter;
 
@@ -238,13 +245,34 @@ export default function UserManagement() {
           </p>
         </div>
 
-        <button
-          onClick={() => setIsAddUserModalOpen(true)}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-accent-primary hover:bg-blue-600 text-white font-semibold text-xs shadow-lg shadow-blue-500/20 transition-all cursor-pointer self-start sm:self-auto"
-        >
-          <UserPlus className="h-4 w-4" />
-          <span>Provision New Account</span>
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+          <button
+            onClick={async () => {
+              setIsSyncing(true);
+              const ok = await syncFromCloud();
+              setIsSyncing(false);
+              addToast({
+                type: ok ? 'success' : 'info',
+                title: ok ? 'Cloud Synced' : 'Sync Notice',
+                message: ok ? 'User accounts refreshed from Supabase Cloud.' : 'Running with local storage.',
+              });
+            }}
+            disabled={isSyncing}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border text-gray-200 font-semibold text-xs transition-colors cursor-pointer"
+            title="Fetch latest user accounts from Supabase Cloud"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 text-accent-light ${isSyncing ? 'animate-spin' : ''}`} />
+            <span>Sync Cloud</span>
+          </button>
+
+          <button
+            onClick={() => setIsAddUserModalOpen(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-accent-primary hover:bg-blue-600 text-white font-semibold text-xs shadow-lg shadow-blue-500/20 transition-all cursor-pointer"
+          >
+            <UserPlus className="h-4 w-4" />
+            <span>Provision New Account</span>
+          </button>
+        </div>
       </div>
 
       {/* Filter and Search Bar */}
