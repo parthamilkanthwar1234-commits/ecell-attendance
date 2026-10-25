@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Calendar as CalendarIcon,
@@ -81,6 +81,11 @@ export default function MeetingsEvents() {
   const [editingSession, setEditingSession] = useState<AttendanceSession | null>(null);
   const [sessionToDelete, setSessionToDelete] = useState<AttendanceSession | null>(null);
   const [selectedAttendanceSession, setSelectedAttendanceSession] = useState<AttendanceSession | null>(null);
+
+  // Automatically refresh latest sessions and attendance from Supabase Cloud on mount
+  useEffect(() => {
+    syncFromCloud();
+  }, [syncFromCloud]);
 
   const sessionAttendanceRecords = useMemo(() => {
     if (!selectedAttendanceSession) return [];

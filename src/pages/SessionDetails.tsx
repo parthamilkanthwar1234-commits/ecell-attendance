@@ -94,6 +94,14 @@ export default function SessionDetails() {
     setAttendanceMap(map);
   }, [existingRecords, applicableMembers]);
 
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isSavingAttendance, setIsSavingAttendance] = useState(false);
+
+  // Automatically fetch latest cloud attendance records on mount
+  useEffect(() => {
+    syncFromCloud();
+  }, [syncFromCloud]);
+
   // Modals
   const [isMoMModalOpen, setIsMoMModalOpen] = useState(false);
   const [isViewMoMModalOpen, setIsViewMoMModalOpen] = useState(false);
@@ -180,8 +188,11 @@ export default function SessionDetails() {
     };
   }, [applicableMembers, attendanceMap]);
 
-  // Save Attendance to Store
-  const handleSaveAttendance = () => {
+  // Save Attendance to Store & Sync to Supabase Cloud
+  const handleSaveAttendance = async () => {
+    if (!session) return;
+    setIsSavingAttendance(true);
+
     const newRecords: AttendanceRecord[] = applicableMembers.map((member) => {
       const entry = attendanceMap[member.id] || { status: 'present', remarks: '' };
       return {
@@ -197,33 +208,61 @@ export default function SessionDetails() {
       };
     });
 
-    dispatch({
-      type: 'SAVE_ATTENDANCE',
-      payload: {
-        records: newRecords,
-        auditReason: auditReason || 'Attendance updated via session details page',
-      },
-    });
+    try {
+      // 1. Directly commit records and session status to Supabase Cloud
+      if (isSupabaseConfigured() && supabase) {
+        const { error: recErr } = await supabase.from('records').upsert(newRecords);
+        if (recErr) console.error('Cloud records upsert error:', recErr);
 
-    // Mark session as Completed if not already
-    if (session.status !== 'Completed') {
+        if (session.status !== 'Completed') {
+          const { error: sessErr } = await supabase.from('sessions').update({
+            status: 'Completed',
+            completed_at: new Date().toISOString(),
+          }).eq('id', session.id);
+          if (sessErr) console.error('Cloud session update error:', sessErr);
+        }
+      }
+
+      // 2. Dispatch local store updates
       dispatch({
-        type: 'UPDATE_SESSION',
+        type: 'SAVE_ATTENDANCE',
         payload: {
-          ...session,
-          status: 'Completed',
-          completed_at: new Date().toISOString(),
+          records: newRecords,
+          auditReason: auditReason || 'Attendance updated via session details page',
         },
       });
-    }
 
-    setIsConfirmSaveOpen(false);
-    setAuditReason('');
-    addToast({
-      type: 'success',
-      title: 'Attendance Saved',
-      message: `Updated records for ${newRecords.length} members in "${session.name}".`,
-    });
+      if (session.status !== 'Completed') {
+        dispatch({
+          type: 'UPDATE_SESSION',
+          payload: {
+            ...session,
+            status: 'Completed',
+            completed_at: new Date().toISOString(),
+          },
+        });
+      }
+
+      // 3. Immediately refresh and sync
+      await syncFromCloud();
+
+      addToast({
+        type: 'success',
+        title: 'Attendance Saved & Cloud Synced',
+        message: `Updated records for ${newRecords.length} members in "${session.name}" across all devices.`,
+      });
+    } catch (err) {
+      console.error('Error saving attendance:', err);
+      addToast({
+        type: 'error',
+        title: 'Save Failed',
+        message: 'Could not sync attendance with cloud. Please check network.',
+      });
+    } finally {
+      setIsSavingAttendance(false);
+      setIsConfirmSaveOpen(false);
+      setAuditReason('');
+    }
   };
 
   // Open MoM Form
@@ -452,7 +491,26 @@ export default function SessionDetails() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={async () => {
+                setIsSyncing(true);
+                const ok = await syncFromCloud();
+                setIsSyncing(false);
+                addToast({
+                  type: ok ? 'success' : 'info',
+                  title: ok ? 'Cloud Synced' : 'Sync Notice',
+                  message: ok ? 'Attendance sheet refreshed from Supabase Cloud.' : 'Running with local storage.',
+                });
+              }}
+              disabled={isSyncing}
+              className="px-2.5 py-1.5 rounded-lg bg-dark-bg hover:bg-dark-hover text-gray-300 text-xs font-semibold cursor-pointer border border-dark-border inline-flex items-center gap-1.5"
+              title="Click to fetch latest attendance from other devices"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 text-accent-light ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>Sync Cloud</span>
+            </button>
+
             <button
               onClick={() => {
                 const data = applicableMembers.map((m, idx) => ({
@@ -650,10 +708,11 @@ export default function SessionDetails() {
             </span>
             <button
               onClick={() => setIsConfirmSaveOpen(true)}
-              className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-accent-primary hover:bg-blue-600 text-white font-semibold text-xs shadow-lg shadow-blue-500/20 cursor-pointer"
+              disabled={isSavingAttendance}
+              className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-accent-primary hover:bg-blue-600 disabled:opacity-50 text-white font-semibold text-xs shadow-lg shadow-blue-500/20 cursor-pointer"
             >
               <Save className="h-4 w-4" />
-              <span>Save & Update Attendance</span>
+              <span>{isSavingAttendance ? 'Saving & Syncing...' : 'Save & Update Attendance'}</span>
             </button>
           </div>
         )}
@@ -836,9 +895,10 @@ export default function SessionDetails() {
             </button>
             <button
               onClick={handleSaveAttendance}
-              className="px-4 py-1.5 rounded-lg bg-accent-primary hover:bg-blue-600 text-white font-semibold text-xs cursor-pointer"
+              disabled={isSavingAttendance}
+              className="px-4 py-1.5 rounded-lg bg-accent-primary hover:bg-blue-600 disabled:opacity-50 text-white font-semibold text-xs cursor-pointer shadow-lg shadow-blue-500/20"
             >
-              Confirm & Save
+              {isSavingAttendance ? 'Syncing to Cloud...' : 'Confirm & Save to Cloud'}
             </button>
           </div>
         </div>

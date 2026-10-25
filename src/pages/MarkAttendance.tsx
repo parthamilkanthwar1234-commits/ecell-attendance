@@ -15,7 +15,8 @@ import {
   AlertCircle,
   Shield,
   Layers,
-  ArrowRight
+  ArrowRight,
+  RefreshCw,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import {
@@ -27,6 +28,7 @@ import {
   SessionStatus
 } from '../types';
 import { formatDate, generateId, getStatusBgColor, getStatusLabel } from '../lib/utils';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import Modal from '../components/ui/Modal';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 
@@ -64,9 +66,18 @@ export default function MarkAttendance() {
     canCreateSession,
     canManageSession,
     getApplicableMembersForSession,
+    syncFromCloud,
   } = useApp();
   const { sessions, records, auth } = state;
   const user = auth.user;
+
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Automatically refresh latest cloud attendance records on mount
+  useEffect(() => {
+    syncFromCloud();
+  }, [syncFromCloud]);
 
   // General members cannot mark attendance; redirect to My Domain
   useEffect(() => {
@@ -237,9 +248,10 @@ export default function MarkAttendance() {
     });
   };
 
-  // Save Attendance
-  const handleSaveAttendance = () => {
+  // Save Attendance & Directly Commit to Cloud
+  const handleSaveAttendance = async () => {
     if (!currentSession) return;
+    setIsSaving(true);
 
     const newRecords: AttendanceRecord[] = applicableMembers.map((member) => {
       const entry = attendanceMap[member.id] || { status: 'absent', remarks: '' };
@@ -256,32 +268,61 @@ export default function MarkAttendance() {
       };
     });
 
-    dispatch({
-      type: 'SAVE_ATTENDANCE',
-      payload: {
-        records: newRecords,
-        auditReason: auditReason || 'Attendance recorded via attendance marker',
-      },
-    });
+    try {
+      // 1. Direct Supabase Cloud upsert
+      if (isSupabaseConfigured() && supabase) {
+        const { error: recErr } = await supabase.from('records').upsert(newRecords);
+        if (recErr) console.error('Cloud records upsert error:', recErr);
 
-    if (currentSession.status !== 'Completed') {
+        if (currentSession.status !== 'Completed') {
+          const { error: sessErr } = await supabase.from('sessions').update({
+            status: 'Completed',
+            completed_at: new Date().toISOString(),
+          }).eq('id', currentSession.id);
+          if (sessErr) console.error('Cloud session update error:', sessErr);
+        }
+      }
+
+      // 2. Dispatch local store
       dispatch({
-        type: 'UPDATE_SESSION',
+        type: 'SAVE_ATTENDANCE',
         payload: {
-          ...currentSession,
-          status: 'Completed',
-          completed_at: new Date().toISOString(),
+          records: newRecords,
+          auditReason: auditReason || 'Attendance recorded via attendance marker',
         },
       });
-    }
 
-    setIsConfirmOpen(false);
-    setAuditReason('');
-    addToast({
-      type: 'success',
-      title: 'Attendance Saved',
-      message: `Recorded attendance for ${applicableMembers.length} members in "${currentSession.name}".`,
-    });
+      if (currentSession.status !== 'Completed') {
+        dispatch({
+          type: 'UPDATE_SESSION',
+          payload: {
+            ...currentSession,
+            status: 'Completed',
+            completed_at: new Date().toISOString(),
+          },
+        });
+      }
+
+      // 3. Immediately refresh and sync
+      await syncFromCloud();
+
+      addToast({
+        type: 'success',
+        title: 'Attendance Saved & Cloud Synced',
+        message: `Recorded attendance for ${applicableMembers.length} members in "${currentSession.name}" across all devices.`,
+      });
+    } catch (err) {
+      console.error('Error saving attendance:', err);
+      addToast({
+        type: 'error',
+        title: 'Save Failed',
+        message: 'Could not sync attendance with cloud. Please check network.',
+      });
+    } finally {
+      setIsSaving(false);
+      setIsConfirmOpen(false);
+      setAuditReason('');
+    }
   };
 
   return (
@@ -294,15 +335,36 @@ export default function MarkAttendance() {
             Domain-scoped attendance entry with live verification and automated audit trails
           </p>
         </div>
-        {canCreateSession() && (
+        <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
           <button
-            onClick={() => setIsNewSessionModalOpen(true)}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-accent-primary hover:bg-blue-600 text-white font-medium shadow-lg shadow-blue-500/20 transition-all cursor-pointer self-start sm:self-auto"
+            onClick={async () => {
+              setIsSyncing(true);
+              const ok = await syncFromCloud();
+              setIsSyncing(false);
+              addToast({
+                type: ok ? 'success' : 'info',
+                title: ok ? 'Cloud Synced' : 'Sync Notice',
+                message: ok ? 'Attendance sessions refreshed from Supabase Cloud.' : 'Running with local storage.',
+              });
+            }}
+            disabled={isSyncing}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border text-gray-200 font-semibold text-xs transition-colors cursor-pointer"
+            title="Fetch latest sessions and attendance from Supabase Cloud"
           >
-            <Plus className="h-4 w-4" />
-            <span>New Session</span>
+            <RefreshCw className={`h-3.5 w-3.5 text-accent-light ${isSyncing ? 'animate-spin' : ''}`} />
+            <span>Sync Cloud</span>
           </button>
-        )}
+
+          {canCreateSession() && (
+            <button
+              onClick={() => setIsNewSessionModalOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-accent-primary hover:bg-blue-600 text-white font-medium shadow-lg shadow-blue-500/20 transition-all cursor-pointer"
+            >
+              <Plus className="h-4 w-4" />
+              <span>New Session</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Session Selector Card */}
@@ -584,9 +646,10 @@ export default function MarkAttendance() {
             </button>
             <button
               onClick={handleSaveAttendance}
-              className="px-4 py-1.5 bg-accent-primary hover:bg-blue-600 text-white text-xs font-semibold rounded cursor-pointer"
+              disabled={isSaving}
+              className="px-4 py-1.5 bg-accent-primary hover:bg-blue-600 disabled:opacity-50 text-white text-xs font-semibold rounded cursor-pointer shadow-lg shadow-blue-500/20"
             >
-              Save Now
+              {isSaving ? 'Syncing to Cloud...' : 'Confirm & Save to Cloud'}
             </button>
           </div>
         </div>
