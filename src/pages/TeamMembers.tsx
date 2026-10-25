@@ -97,7 +97,14 @@ export default function TeamMembers() {
 
   const handleOpenAdd = () => {
     setEditingMember(null);
-    const nextNum = members.length + 1;
+    // Dynamically calculate the highest existing EC-XXX numeric ID
+    const existingNums = members
+      .map((m) => {
+        const match = (m.member_id || '').match(/EC-(\d+)/i);
+        return match ? parseInt(match[1], 10) : 0;
+      })
+      .filter((n) => !isNaN(n) && n > 0);
+    const nextNum = existingNums.length > 0 ? Math.max(...existingNums) + 1 : members.length + 1;
     const generatedId = `EC-${String(nextNum).padStart(3, '0')}`;
     setFormData({
       name: '',
@@ -175,6 +182,7 @@ export default function TeamMembers() {
         const updated: Member = {
           ...editingMember,
           name: formData.name.trim(),
+          member_id: formData.member_id.trim().toUpperCase() || editingMember.member_id,
           email: formData.email.trim(),
           phone: formData.phone.trim(),
           department: assignedDomain,
@@ -226,6 +234,7 @@ export default function TeamMembers() {
         const newMember: Member = {
           id: generateId('member'),
           ...formData,
+          member_id: formData.member_id.trim().toUpperCase() || 'EC-000',
           department: assignedDomain,
           role: assignedRole,
           email: formData.email || `${username}@ecell.jspmrscoe.in`,
@@ -673,13 +682,16 @@ export default function TeamMembers() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-gray-400 mb-1">Member ID</label>
+              <label className="block text-xs font-semibold text-gray-400 mb-1">
+                Member ID (EC Number) *
+              </label>
               <input
                 type="text"
+                required
                 value={formData.member_id}
-                disabled={!isMasterAdmin()}
-                onChange={(e) => setFormData({ ...formData, member_id: e.target.value })}
-                className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white focus:outline-none focus:border-accent-primary font-mono disabled:opacity-60"
+                onChange={(e) => setFormData({ ...formData, member_id: e.target.value.toUpperCase() })}
+                placeholder="e.g. EC-010"
+                className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white focus:outline-none focus:border-accent-primary font-mono uppercase"
               />
             </div>
 

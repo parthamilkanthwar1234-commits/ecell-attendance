@@ -60,11 +60,25 @@ export default function MarkAttendance() {
     dispatch,
     addToast,
     isMasterAdmin,
+    isMember,
+    canCreateSession,
     canManageSession,
     getApplicableMembersForSession,
   } = useApp();
   const { sessions, records, auth } = state;
   const user = auth.user;
+
+  // General members cannot mark attendance; redirect to My Domain
+  useEffect(() => {
+    if (isMember()) {
+      addToast({
+        type: 'error',
+        title: 'Access Restricted',
+        message: 'Only Core Committee Leads and Admins can mark attendance.',
+      });
+      navigate('/my-domain');
+    }
+  }, [isMember, navigate, addToast]);
 
   const [selectedSessionId, setSelectedSessionId] = useState<string>('');
   const [attendanceMap, setAttendanceMap] = useState<
@@ -280,13 +294,15 @@ export default function MarkAttendance() {
             Domain-scoped attendance entry with live verification and automated audit trails
           </p>
         </div>
-        <button
-          onClick={() => setIsNewSessionModalOpen(true)}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-accent-primary hover:bg-blue-600 text-white font-medium shadow-lg shadow-blue-500/20 transition-all cursor-pointer self-start sm:self-auto"
-        >
-          <Plus className="h-4 w-4" />
-          <span>New Session</span>
-        </button>
+        {canCreateSession() && (
+          <button
+            onClick={() => setIsNewSessionModalOpen(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-accent-primary hover:bg-blue-600 text-white font-medium shadow-lg shadow-blue-500/20 transition-all cursor-pointer self-start sm:self-auto"
+          >
+            <Plus className="h-4 w-4" />
+            <span>New Session</span>
+          </button>
+        )}
       </div>
 
       {/* Session Selector Card */}

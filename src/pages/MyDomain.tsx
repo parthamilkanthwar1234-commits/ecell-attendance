@@ -4,6 +4,7 @@ import {
   Layers,
   Calendar,
   CheckCircle2,
+  XCircle,
   Clock,
   FileText,
   Download,
@@ -22,15 +23,18 @@ export default function MyDomain() {
   const { user } = state.auth;
   const userDomain = user?.domain || 'Event Production & Curation';
 
-  // Find linked member profile if any
+  // Find linked member profile strictly by username, email, or exact name
   const linkedMember = useMemo(() => {
-    return state.members.find(
-      (m) =>
-        m.username === user?.username ||
-        m.name.toLowerCase() === user?.full_name.toLowerCase() ||
-        m.department === userDomain
+    if (!user) return null;
+    return (
+      state.members.find(
+        (m) =>
+          (m.username && m.username.toLowerCase() === user.username.toLowerCase()) ||
+          (m.email && m.email.toLowerCase() === user.email.toLowerCase()) ||
+          m.name.toLowerCase() === user.full_name.toLowerCase()
+      ) || null
     );
-  }, [state.members, user, userDomain]);
+  }, [state.members, user]);
 
   // Sessions relevant to user's domain: their domain OR All Domains
   const relevantSessions = useMemo(() => {
@@ -65,16 +69,25 @@ export default function MyDomain() {
 
   // Attendance Rate calculation
   const personalAttendanceStats = useMemo(() => {
-    const applicable = userAttendanceRecords.filter((r) => r.status !== 'excused');
-    const attended = applicable.filter((r) => r.status === 'present' || r.status === 'late').length;
-    const pct = applicable.length > 0 ? Math.round((attended / applicable.length) * 100) : 0;
+    const totalMeetingsHeld = completedSessions.length;
+    const attended = userAttendanceRecords.filter(
+      (r) => r.status === 'present' || r.status === 'late'
+    ).length;
+    const directAbsent = userAttendanceRecords.filter((r) => r.status === 'absent').length;
+    const missed = Math.max(directAbsent, totalMeetingsHeld - attended);
+    const pct = totalMeetingsHeld > 0
+      ? Math.round((attended / totalMeetingsHeld) * 100)
+      : userAttendanceRecords.length > 0
+      ? Math.round((attended / userAttendanceRecords.length) * 100)
+      : 0;
+
     return {
-      total: userAttendanceRecords.length,
+      totalMeetingsHeld,
       attended,
-      missed: userAttendanceRecords.filter((r) => r.status === 'absent').length,
+      missed,
       pct,
     };
-  }, [userAttendanceRecords]);
+  }, [completedSessions.length, userAttendanceRecords]);
 
   return (
     <div className="space-y-6">
@@ -113,39 +126,58 @@ export default function MyDomain() {
         </div>
       </div>
 
-      {/* 3 Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      {/* 4 Attendance & Domain Metric Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-dark-card border border-dark-border rounded-xl p-5">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-gray-400 font-semibold uppercase">Upcoming Domain Meets</span>
+            <span className="text-xs text-gray-400 font-semibold uppercase">Meetings Conducted</span>
             <Calendar className="h-5 w-5 text-blue-400" />
           </div>
-          <div className="text-3xl font-extrabold text-white mt-3">{upcomingSessions.length}</div>
-          <p className="text-xs text-gray-500 mt-1">Scheduled on calendar</p>
+          <div className="text-3xl font-extrabold text-white mt-3">{personalAttendanceStats.totalMeetingsHeld}</div>
+          <p className="text-xs text-gray-500 mt-1">Total held for {userDomain}</p>
         </div>
 
-        <div className="bg-dark-card border border-dark-border rounded-xl p-5">
+        <div className="bg-dark-card border border-status-success/30 rounded-xl p-5">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-gray-400 font-semibold uppercase">Sessions Attended</span>
+            <span className="text-xs text-status-success font-semibold uppercase">Present (Attended)</span>
             <CheckCircle2 className="h-5 w-5 text-status-success" />
           </div>
           <div className="text-3xl font-extrabold text-status-success mt-3">
             {personalAttendanceStats.attended}
           </div>
-          <p className="text-xs text-gray-500 mt-1">Out of {completedSessions.length} sessions</p>
+          <p className="text-xs text-gray-500 mt-1">Sessions attended</p>
         </div>
 
-        <div className="bg-dark-card border border-dark-border rounded-xl p-5">
+        <div className="bg-dark-card border border-status-absent/30 rounded-xl p-5">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-gray-400 font-semibold uppercase">Domain MoMs Available</span>
-            <FileText className="h-5 w-5 text-accent-light" />
+            <span className="text-xs text-status-absent font-semibold uppercase">Absent (Missed)</span>
+            <XCircle className="h-5 w-5 text-status-absent" />
           </div>
-          <div className="text-3xl font-extrabold text-accent-light mt-3">
-            {state.momDocuments.filter((m) =>
-              relevantSessions.some((s) => s.id === m.session_id)
-            ).length}
+          <div className="text-3xl font-extrabold text-status-absent mt-3">
+            {personalAttendanceStats.missed}
           </div>
-          <p className="text-xs text-gray-500 mt-1">Official meeting minutes</p>
+          <p className="text-xs text-gray-500 mt-1">Sessions missed</p>
+        </div>
+
+        <div className="bg-dark-card border border-accent-primary/40 rounded-xl p-5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-accent-light font-semibold uppercase">Attendance Rate</span>
+            <TrendingUp className="h-5 w-5 text-accent-light" />
+          </div>
+          <div
+            className={`text-3xl font-extrabold mt-3 ${
+              personalAttendanceStats.pct >= 75
+                ? 'text-status-success'
+                : personalAttendanceStats.pct >= 50
+                ? 'text-status-late'
+                : 'text-status-absent'
+            }`}
+          >
+            {personalAttendanceStats.pct}%
+          </div>
+          <p className="text-xs text-gray-500 mt-1">
+            {personalAttendanceStats.pct >= 75 ? 'Above 75% required' : 'Below 75% threshold'}
+          </p>
         </div>
       </div>
 

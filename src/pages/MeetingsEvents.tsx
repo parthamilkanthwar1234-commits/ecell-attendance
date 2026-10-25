@@ -21,6 +21,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { AttendanceSession, SessionType, ECellDomain, SessionStatus } from '../types';
 import { formatDate, generateId, getStatusBgColor, getStatusLabel } from '../lib/utils';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import Modal from '../components/ui/Modal';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 
@@ -55,6 +56,11 @@ export default function MeetingsEvents() {
     addToast,
     isMasterAdmin,
     canManageSession,
+    canDeleteSession,
+    canCreateSession,
+    canViewSession,
+    isMember,
+    syncFromCloud,
     getSessionMoM,
   } = useApp();
   const { sessions, records, auth } = state;
@@ -105,6 +111,14 @@ export default function MeetingsEvents() {
   });
 
   const handleOpenAdd = () => {
+    if (!canCreateSession()) {
+      addToast({
+        type: 'error',
+        title: 'Access Restricted',
+        message: 'Only Core Committee Leads and Admins can schedule sessions.',
+      });
+      return;
+    }
     setEditingSession(null);
     setFormData({
       name: '',
@@ -196,21 +210,57 @@ export default function MeetingsEvents() {
     setIsFormOpen(false);
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!sessionToDelete) return;
-    dispatch({ type: 'DELETE_SESSION', payload: sessionToDelete.id });
+    if (!canDeleteSession(sessionToDelete)) {
+      addToast({
+        type: 'error',
+        title: 'Access Denied',
+        message: 'Only the session creator or Master Admin can delete this session.',
+      });
+      setSessionToDelete(null);
+      return;
+    }
+    const sessId = sessionToDelete.id;
+    const sessName = sessionToDelete.name;
+    dispatch({ type: 'DELETE_SESSION', payload: sessId });
+
+    if (isSupabaseConfigured() && supabase) {
+      await supabase.from('sessions').delete().eq('id', sessId);
+      await supabase.from('records').delete().eq('session_id', sessId);
+    }
+    await syncFromCloud();
+
     addToast({
       type: 'info',
       title: 'Session Removed',
-      message: `${sessionToDelete.name} and related records removed.`,
+      message: `${sessName} and related records removed and synced to cloud.`,
     });
     setSessionToDelete(null);
   };
+
+  // Current logged in member profile (for general member attendance lookup)
+  const currentMember = useMemo(() => {
+    if (!user) return null;
+    return (
+      state.members.find(
+        (m) =>
+          (m.username && m.username.toLowerCase() === user.username.toLowerCase()) ||
+          (m.email && m.email.toLowerCase() === user.email.toLowerCase()) ||
+          m.name.toLowerCase() === user.full_name.toLowerCase()
+      ) || null
+    );
+  }, [state.members, user]);
 
   // Filtered Sessions
   const filteredSessions = useMemo(() => {
     return sessions
       .filter((s) => {
+        // General members only see meetings for their domain or all domains
+        if (isMember() && !canViewSession(s)) {
+          return false;
+        }
+
         const matchesSearch =
           s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
           s.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -229,7 +279,7 @@ export default function MeetingsEvents() {
         return matchesSearch && matchesDomain && matchesType && matchesStatus && matchesMoM;
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [sessions, searchTerm, selectedDomain, selectedType, statusFilter, momFilter, getSessionMoM]);
+  }, [sessions, isMember, canViewSession, searchTerm, selectedDomain, selectedType, statusFilter, momFilter, getSessionMoM]);
 
   // Session Stats Helper
   const getSessionStats = (sessionId: string) => {
@@ -277,13 +327,15 @@ export default function MeetingsEvents() {
             </button>
           </div>
 
-          <button
-            onClick={handleOpenAdd}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-accent-primary hover:bg-blue-600 text-white font-medium shadow-lg shadow-blue-500/20 transition-all cursor-pointer"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Create New Session</span>
-          </button>
+          {canCreateSession() && (
+            <button
+              onClick={handleOpenAdd}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-accent-primary hover:bg-blue-600 text-white font-medium shadow-lg shadow-blue-500/20 transition-all cursor-pointer"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Create New Session</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -399,6 +451,19 @@ export default function MeetingsEvents() {
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
                         )}
+
+                        {canDeleteSession(session) && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSessionToDelete(session);
+                            }}
+                            className="p-1 rounded text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
+                            title="Delete Session"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -491,7 +556,32 @@ export default function MeetingsEvents() {
                       </td>
                       <td className="p-3.5 text-gray-300">{session.session_type}</td>
                       <td className="p-3.5">
-                        {stats.total > 0 ? (
+                        {isMember() ? (
+                          (() => {
+                            const myRec = records.find(
+                              (r) =>
+                                r.session_id === session.id &&
+                                currentMember &&
+                                r.member_id === currentMember.id
+                            );
+                            if (myRec) {
+                              return (
+                                <span
+                                  className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${getStatusBgColor(
+                                    myRec.status
+                                  )}`}
+                                >
+                                  {getStatusLabel(myRec.status)}
+                                </span>
+                              );
+                            }
+                            return (
+                              <span className="text-gray-500 text-[11px]">
+                                {session.status === 'Completed' ? 'Absent / Unrecorded' : 'Scheduled'}
+                              </span>
+                            );
+                          })()
+                        ) : stats.total > 0 ? (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -518,11 +608,25 @@ export default function MeetingsEvents() {
                           {mom ? 'MoM Uploaded' : 'MoM Pending'}
                         </span>
                       </td>
-                      <td className="p-3.5 text-right">
-                        <span className="inline-flex items-center text-accent-light font-semibold">
-                          <span>Details</span>
-                          <ChevronRight className="h-3.5 w-3.5 ml-1" />
-                        </span>
+                      <td className="p-3.5 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-2">
+                          {canDeleteSession(session) && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSessionToDelete(session);
+                              }}
+                              className="p-1 rounded text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
+                              title="Delete Session (Admin / Creator)"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                          <span className="inline-flex items-center text-accent-light font-semibold">
+                            <span>Details</span>
+                            <ChevronRight className="h-3.5 w-3.5 ml-1" />
+                          </span>
+                        </div>
                       </td>
                     </tr>
                   );

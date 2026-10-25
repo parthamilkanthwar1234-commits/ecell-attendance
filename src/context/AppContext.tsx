@@ -426,6 +426,8 @@ interface AppContextType {
   isLeadAdmin: () => boolean;
   isMember: () => boolean;
   canManageSession: (session: AttendanceSession) => boolean;
+  canDeleteSession: (session: AttendanceSession) => boolean;
+  canCreateSession: () => boolean;
   canMarkAttendanceForDomain: (domain: ECellDomain) => boolean;
   canUploadMoM: (session: AttendanceSession) => boolean;
   canViewSession: (session: AttendanceSession) => boolean;
@@ -724,6 +726,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [user]
   );
 
+  const canDeleteSession = useCallback(
+    (session: AttendanceSession): boolean => {
+      if (!user) return false;
+      if (isMasterAdmin()) return true;
+      const isCreator =
+        (!!session.created_by && session.created_by.toLowerCase() === user.username.toLowerCase()) ||
+        (!!session.created_by_name && session.created_by_name.toLowerCase() === user.full_name.toLowerCase()) ||
+        session.created_by === user.id;
+      return Boolean(isCreator);
+    },
+    [user, isMasterAdmin]
+  );
+
+  const canCreateSession = useCallback((): boolean => {
+    if (!user) return false;
+    if (user.role === 'member') return false;
+    return true;
+  }, [user]);
+
   const canUploadMoM = useCallback(
     (session: AttendanceSession) => {
       if (!user) return false;
@@ -837,6 +858,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         isLeadAdmin,
         isMember,
         canManageSession,
+        canDeleteSession,
+        canCreateSession,
         canMarkAttendanceForDomain,
         canUploadMoM,
         canViewSession,

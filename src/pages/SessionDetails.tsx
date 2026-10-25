@@ -21,7 +21,8 @@ import {
   Layers,
   Check,
   AlertCircle,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Trash2,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import {
@@ -32,6 +33,7 @@ import {
   SessionStatus
 } from '../types';
 import { formatDate, getStatusBgColor, getStatusLabel, exportToCSV } from '../lib/utils';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import Modal from '../components/ui/Modal';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 
@@ -46,7 +48,9 @@ export default function SessionDetails() {
     isPresident,
     isGeneralSecretary,
     canManageSession,
+    canDeleteSession,
     canUploadMoM,
+    syncFromCloud,
     getApplicableMembersForSession,
     getSessionMoM,
   } = useApp();
@@ -94,6 +98,7 @@ export default function SessionDetails() {
   const [isMoMModalOpen, setIsMoMModalOpen] = useState(false);
   const [isViewMoMModalOpen, setIsViewMoMModalOpen] = useState(false);
   const [isConfirmSaveOpen, setIsConfirmSaveOpen] = useState(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [auditReason, setAuditReason] = useState('');
 
   // MoM Upload Form State
@@ -295,6 +300,36 @@ export default function SessionDetails() {
     setIsMoMModalOpen(false);
   };
 
+  // Delete session handler (Only session creator or Master Admin)
+  const handleDeleteSession = async () => {
+    if (!session) return;
+    if (!canDeleteSession(session)) {
+      addToast({
+        type: 'error',
+        title: 'Access Denied',
+        message: 'Only the session creator or Master Admin can delete this session.',
+      });
+      return;
+    }
+
+    const sessId = session.id;
+    const sessName = session.name;
+    dispatch({ type: 'DELETE_SESSION', payload: sessId });
+
+    if (isSupabaseConfigured() && supabase) {
+      await supabase.from('sessions').delete().eq('id', sessId);
+      await supabase.from('records').delete().eq('session_id', sessId);
+    }
+    await syncFromCloud();
+
+    addToast({
+      type: 'info',
+      title: 'Session Removed',
+      message: `"${sessName}" and related records removed from cloud.`,
+    });
+    navigate('/sessions');
+  };
+
   return (
     <div className="space-y-6">
       {/* Back button and page title bar */}
@@ -332,8 +367,19 @@ export default function SessionDetails() {
           </div>
         </div>
 
-        {/* Action Button: Upload MoM */}
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        {/* Action Buttons */}
+        <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+          {canDeleteSession(session) && (
+            <button
+              onClick={() => setIsDeleteConfirmOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 text-red-400 font-semibold text-xs transition-colors cursor-pointer"
+              title="Delete this session (Session Creator / Master Admin)"
+            >
+              <Trash2 className="h-4 w-4" />
+              <span>Delete Session</span>
+            </button>
+          )}
+
           {userCanUploadMoM && (
             <button
               onClick={handleOpenMoMModal}
@@ -914,6 +960,17 @@ export default function SessionDetails() {
           </div>
         </Modal>
       )}
+
+      {/* Delete Session Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={isDeleteConfirmOpen}
+        onClose={() => setIsDeleteConfirmOpen(false)}
+        onConfirm={handleDeleteSession}
+        title="Delete Session"
+        message={`Are you sure you want to permanently delete session "${session.name}"? This action cannot be undone and will delete all attendance records taken for this meeting.`}
+        confirmLabel="Delete Session"
+        variant="danger"
+      />
     </div>
   );
 }
