@@ -28,7 +28,7 @@ import {
 } from '../lib/supabase';
 
 export default function Settings() {
-  const { state, dispatch, addToast, isMasterAdmin } = useApp();
+  const { state, dispatch, addToast, isMasterAdmin, isPrimaryMasterAdmin } = useApp();
   const { settings } = state;
 
   const [sbUrl, setSbUrl] = useState(() => localStorage.getItem('ecell_supabase_url') || '');
@@ -47,13 +47,22 @@ export default function Settings() {
         <Shield className="h-12 w-12 text-status-absent mx-auto" />
         <h2 className="text-lg font-bold text-white">Access Restricted</h2>
         <p className="text-xs text-gray-400">
-          System settings and policy configuration are restricted exclusively to Master Admin (Parth Amilkanthwar).
+          System settings and policy configuration are restricted exclusively to Master Admins.
         </p>
       </div>
     );
   }
 
   const handleSaveCloudDb = () => {
+    if (!isPrimaryMasterAdmin()) {
+      addToast({
+        type: 'error',
+        title: 'Action Restricted',
+        message: 'Only Primary Master Admin (Parth Amilkanthwar) can update Cloud Database credentials.',
+      });
+      return;
+    }
+
     if (!sbUrl.trim() || !sbKey.trim()) {
       addToast({
         type: 'error',
@@ -109,6 +118,15 @@ export default function Settings() {
 
   // Reset demo data
   const handleResetData = () => {
+    if (!isPrimaryMasterAdmin()) {
+      addToast({
+        type: 'error',
+        title: 'Action Restricted',
+        message: 'Only Primary Master Admin (Parth Amilkanthwar) can execute a full system reset.',
+      });
+      return;
+    }
+
     if (
       window.confirm(
         'Are you sure you want to restore original demo data? Any custom records added will be reset.'
@@ -210,6 +228,13 @@ export default function Settings() {
             </div>
           )}
 
+          {!isPrimaryMasterAdmin() && (
+            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs text-amber-300 flex items-center gap-2">
+              <Shield className="h-4 w-4 shrink-0 text-amber-400" />
+              <span>Root Protected: Supabase Cloud Database credentials can only be configured by Primary Master Admin (Parth Amilkanthwar).</span>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-400 mb-1">
@@ -217,10 +242,11 @@ export default function Settings() {
               </label>
               <input
                 type="text"
+                disabled={!isPrimaryMasterAdmin()}
                 placeholder="https://xyzcompany.supabase.co"
                 value={sbUrl}
                 onChange={(e) => setSbUrl(e.target.value)}
-                className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white focus:outline-none focus:border-accent-primary font-mono"
+                className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white focus:outline-none focus:border-accent-primary font-mono disabled:opacity-50 disabled:cursor-not-allowed"
               />
             </div>
 
@@ -230,30 +256,39 @@ export default function Settings() {
               </label>
               <input
                 type="password"
+                disabled={!isPrimaryMasterAdmin()}
                 placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..."
                 value={sbKey}
                 onChange={(e) => setSbKey(e.target.value)}
-                className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white focus:outline-none focus:border-accent-primary font-mono"
+                className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white focus:outline-none focus:border-accent-primary font-mono disabled:opacity-50 disabled:cursor-not-allowed"
               />
             </div>
           </div>
 
           <div className="flex items-center gap-2 pt-2">
-            <button
-              type="button"
-              onClick={handleSaveCloudDb}
-              className="px-4 py-2 bg-accent-primary hover:bg-blue-600 text-white font-semibold text-xs rounded-lg cursor-pointer transition-colors shadow-sm"
-            >
-              {isSupabaseConfigured() ? 'Update Cloud Credentials' : 'Connect Cloud Database'}
-            </button>
-            {isSupabaseConfigured() && (
-              <button
-                type="button"
-                onClick={clearSupabaseKeys}
-                className="px-3 py-2 bg-status-absent/15 hover:bg-status-absent/25 text-status-absent font-semibold text-xs rounded-lg cursor-pointer transition-colors"
-              >
-                Disconnect Cloud
-              </button>
+            {isPrimaryMasterAdmin() ? (
+              <>
+                <button
+                  type="button"
+                  onClick={handleSaveCloudDb}
+                  className="px-4 py-2 bg-accent-primary hover:bg-blue-600 text-white font-semibold text-xs rounded-lg cursor-pointer transition-colors shadow-sm"
+                >
+                  {isSupabaseConfigured() ? 'Update Cloud Credentials' : 'Connect Cloud Database'}
+                </button>
+                {isSupabaseConfigured() && (
+                  <button
+                    type="button"
+                    onClick={clearSupabaseKeys}
+                    className="px-3 py-2 bg-status-absent/15 hover:bg-status-absent/25 text-status-absent font-semibold text-xs rounded-lg cursor-pointer transition-colors"
+                  >
+                    Disconnect Cloud
+                  </button>
+                )}
+              </>
+            ) : (
+              <span className="text-[11px] text-gray-500 italic">
+                Cloud database credentials managed exclusively by Parth Amilkanthwar.
+              </span>
             )}
           </div>
         </div>
@@ -419,14 +454,20 @@ export default function Settings() {
 
         {/* Save button bar */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-dark-border">
-          <button
-            type="button"
-            onClick={handleResetData}
-            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-status-absent/10 hover:bg-status-absent/20 text-status-absent border border-status-absent/30 text-xs font-semibold transition-colors cursor-pointer"
-          >
-            <RotateCcw className="h-4 w-4" />
-            <span>Reset Demo Data</span>
-          </button>
+          {isPrimaryMasterAdmin() ? (
+            <button
+              type="button"
+              onClick={handleResetData}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-status-absent/10 hover:bg-status-absent/20 text-status-absent border border-status-absent/30 text-xs font-semibold transition-colors cursor-pointer"
+            >
+              <RotateCcw className="h-4 w-4" />
+              <span>Reset Demo Data</span>
+            </button>
+          ) : (
+            <span className="text-[11px] text-gray-500 italic">
+              System reset restricted to Primary Master Admin.
+            </span>
+          )}
 
           <button
             type="submit"

@@ -41,7 +41,7 @@ export default function AuditLogs() {
   // Restore Attendance Action
   const handleRestore = (log: typeof auditLogs[0]) => {
     if (!isMasterAdmin()) {
-      addToast({ type: 'error', title: 'Unauthorized', message: 'Only Master Admin Parth can restore records.' });
+      addToast({ type: 'error', title: 'Unauthorized', message: 'Only Master Admins can restore records.' });
       return;
     }
 

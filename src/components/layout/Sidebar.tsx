@@ -85,7 +85,9 @@ export default function Sidebar() {
   const getRoleBadge = (role?: string) => {
     switch (role) {
       case 'master_admin':
-        return 'bg-accent-primary/20 text-accent-light border-accent-primary/40';
+        return user?.username === 'parth.amilkanthwar'
+          ? 'bg-accent-primary/20 text-accent-light border-accent-primary/40'
+          : 'bg-purple-500/20 text-purple-300 border-purple-500/40';
       case 'president':
       case 'general_secretary':
         return 'bg-amber-500/20 text-status-late border-amber-500/40';
@@ -101,7 +103,7 @@ export default function Sidebar() {
   const getRoleTitle = (role?: string) => {
     switch (role) {
       case 'master_admin':
-        return 'Master Admin';
+        return user?.username === 'parth.amilkanthwar' ? 'Master Admin (Root)' : 'Master Admin';
       case 'president':
         return 'President';
       case 'general_secretary':

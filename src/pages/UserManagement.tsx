@@ -36,7 +36,7 @@ const DOMAINS_LIST: ECellDomain[] = [
 ];
 
 export default function UserManagement() {
-  const { state, dispatch, addToast, isMasterAdmin, syncFromCloud } = useApp();
+  const { state, dispatch, addToast, isMasterAdmin, isPrimaryMasterAdmin, syncFromCloud } = useApp();
   const { userAccounts, settings } = state;
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -82,7 +82,7 @@ export default function UserManagement() {
         <Shield className="h-12 w-12 text-status-absent mx-auto" />
         <h2 className="text-lg font-bold text-white">Access Restricted</h2>
         <p className="text-xs text-gray-400">
-          User Account Administration is restricted exclusively to Master Admin (Parth Amilkanthwar).
+          User Account Administration is restricted exclusively to Master Admins.
         </p>
       </div>
     );
@@ -91,7 +91,7 @@ export default function UserManagement() {
   // Handle Role Change
   const handleRoleChange = (targetUser: UserAccount, newRole: UserRole) => {
     if (!isMasterAdmin()) {
-      addToast({ type: 'error', title: 'Unauthorized', message: 'Only Master Admin can modify roles.' });
+      addToast({ type: 'error', title: 'Unauthorized', message: 'Only Master Admins can modify roles.' });
       return;
     }
 
@@ -99,16 +99,27 @@ export default function UserManagement() {
       addToast({
         type: 'error',
         title: 'Action Prohibited',
-        message: 'The Master Admin account cannot be demoted or modified.',
+        message: 'The Primary Master Admin account (Parth Amilkanthwar) cannot be demoted or modified.',
       });
       return;
     }
 
-    if (newRole === 'master_admin' && targetUser.username !== 'parth.amilkanthwar') {
+    // Demoting a Master Admin account requires Primary Master Admin
+    if (targetUser.role === 'master_admin' && newRole !== 'master_admin' && !isPrimaryMasterAdmin()) {
       addToast({
         type: 'error',
         title: 'Action Prohibited',
-        message: 'Master Admin privileges are strictly reserved for Parth Amilkanthwar.',
+        message: 'Master Admin privileges can only be modified by Primary Master Admin (Parth Amilkanthwar).',
+      });
+      return;
+    }
+
+    // Promoting to master_admin requires Primary Master Admin
+    if (newRole === 'master_admin' && !isPrimaryMasterAdmin()) {
+      addToast({
+        type: 'error',
+        title: 'Action Prohibited',
+        message: 'Only Primary Master Admin (Parth Amilkanthwar) can grant Master Admin privileges.',
       });
       return;
     }
@@ -125,15 +136,15 @@ export default function UserManagement() {
       payload: {
         id: `audit-${Date.now()}`,
         actor_id: state.auth.user?.id || 'admin',
-        actor_name: state.auth.user?.full_name || 'Parth Amilkanthwar',
-        actor_role: 'master_admin',
+        actor_name: state.auth.user?.full_name || 'Master Admin',
+        actor_role: state.auth.user?.role || 'master_admin',
         action_type: 'ROLE_CHANGED',
         entity_type: 'USER',
         entity_id: targetUser.id,
         member_name: targetUser.full_name,
         previous_value: targetUser.role,
         new_value: newRole,
-        reason: `Role changed to ${newRole.toUpperCase()} by Master Admin`,
+        reason: `Role changed to ${newRole.toUpperCase()} by ${state.auth.user?.full_name || 'Master Admin'}`,
         timestamp: new Date().toISOString(),
       },
     });
@@ -147,6 +158,15 @@ export default function UserManagement() {
 
   // Generate / Reset Temporary Password
   const handleResetPassword = (targetUser: UserAccount) => {
+    if (targetUser.username === 'parth.amilkanthwar' && !isPrimaryMasterAdmin()) {
+      addToast({
+        type: 'error',
+        title: 'Action Prohibited',
+        message: 'The Primary Master Admin credential cannot be reset by other administrators.',
+      });
+      return;
+    }
+
     const generatedPass = `RSCOE@${Math.random().toString(36).slice(-6).toUpperCase()}!`;
 
     const updated: UserAccount = {
@@ -162,8 +182,8 @@ export default function UserManagement() {
       payload: {
         id: `audit-${Date.now()}`,
         actor_id: state.auth.user?.id || 'admin',
-        actor_name: 'Parth Amilkanthwar',
-        actor_role: 'master_admin',
+        actor_name: state.auth.user?.full_name || 'Master Admin',
+        actor_role: state.auth.user?.role || 'master_admin',
         action_type: 'PASSWORD_RESET',
         entity_type: 'USER',
         entity_id: targetUser.id,
@@ -295,7 +315,7 @@ export default function UserManagement() {
             className="px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white focus:outline-none focus:border-accent-primary cursor-pointer w-full sm:w-auto"
           >
             <option value="ALL">All Roles ({userAccounts.length})</option>
-            <option value="master_admin">Master Admin (Parth)</option>
+            <option value="master_admin">Master Admins (Parth, Ayush, Vanshika)</option>
             <option value="president">President (Sarthak)</option>
             <option value="general_secretary">General Secretary (Yashraj)</option>
             <option value="lead_admin">Lead Admins (Domain Leads)</option>
@@ -322,17 +342,22 @@ export default function UserManagement() {
             <tbody className="divide-y divide-dark-border">
               {filteredAccounts.map((account) => {
                 const isMasterParth = account.username === 'parth.amilkanthwar';
+                const isMasterAdminAccount = account.role === 'master_admin';
 
                 return (
                   <tr key={account.id} className="hover:bg-dark-hover/40 transition-colors">
                     <td className="p-3.5">
                       <div className="font-bold text-white flex items-center gap-2">
                         <span>{account.full_name}</span>
-                        {isMasterParth && (
+                        {isMasterParth ? (
                           <span className="px-1.5 py-0.5 rounded text-[10px] bg-accent-primary/20 text-accent-light font-black border border-accent-primary/40">
+                            PRIMARY MASTER ADMIN
+                          </span>
+                        ) : isMasterAdminAccount ? (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-500/20 text-purple-300 font-black border border-purple-500/40">
                             MASTER ADMIN
                           </span>
-                        )}
+                        ) : null}
                       </div>
                       <div className="text-[11px] text-gray-400 font-mono">
                         @{account.username} · {account.email}
@@ -348,6 +373,10 @@ export default function UserManagement() {
                     <td className="p-3.5">
                       {isMasterParth ? (
                         <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-accent-primary/20 text-accent-light border border-accent-primary/40">
+                          PRIMARY MASTER ADMIN
+                        </span>
+                      ) : isMasterAdminAccount && !isPrimaryMasterAdmin() ? (
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-purple-500/20 text-purple-300 border border-purple-500/40">
                           MASTER ADMIN
                         </span>
                       ) : (
@@ -356,6 +385,9 @@ export default function UserManagement() {
                           onChange={(e) => handleRoleChange(account, e.target.value as UserRole)}
                           className="px-2.5 py-1 bg-dark-bg border border-dark-border rounded-lg text-[11px] text-white focus:outline-none focus:border-accent-primary cursor-pointer font-semibold"
                         >
+                          {isPrimaryMasterAdmin() && (
+                            <option value="master_admin">Master Admin</option>
+                          )}
                           <option value="president">President (Read-Only)</option>
                           <option value="general_secretary">General Secretary (Read-Only)</option>
                           <option value="lead_admin">Domain Lead</option>
@@ -394,14 +426,18 @@ export default function UserManagement() {
 
                     <td className="p-3.5 text-right whitespace-nowrap">
                       <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => handleResetPassword(account)}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-dark-bg hover:bg-dark-hover border border-dark-border text-gray-300 text-[11px] font-semibold cursor-pointer"
-                          title="Generate new temporary password"
-                        >
-                          <KeyRound className="h-3 w-3 text-accent-light" />
-                          <span>Reset Credential</span>
-                        </button>
+                        {isMasterParth && !isPrimaryMasterAdmin() ? (
+                          <span className="text-[11px] text-gray-500 italic pr-2">Protected Root</span>
+                        ) : (
+                          <button
+                            onClick={() => handleResetPassword(account)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-dark-bg hover:bg-dark-hover border border-dark-border text-gray-300 text-[11px] font-semibold cursor-pointer"
+                            title="Generate new temporary password"
+                          >
+                            <KeyRound className="h-3 w-3 text-accent-light" />
+                            <span>Reset Credential</span>
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -544,6 +580,7 @@ export default function UserManagement() {
               onChange={(e) => setNewUser({ ...newUser, role: e.target.value as UserRole })}
               className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white focus:outline-none focus:border-accent-primary cursor-pointer"
             >
+              {isPrimaryMasterAdmin() && <option value="master_admin">Master Admin</option>}
               <option value="lead_admin">Domain Lead</option>
               <option value="co_lead">Domain Co-Lead</option>
               <option value="president">President (Read-Only)</option>

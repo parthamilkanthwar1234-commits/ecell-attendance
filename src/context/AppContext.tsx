@@ -114,6 +114,21 @@ function initializeState(): AppState {
   const auditLogs = loadFromStorage(STORAGE_KEYS.AUDIT_V3, initialAudits);
   const settings = loadFromStorage(STORAGE_KEYS.SETTINGS_V3, initialSettings);
 
+  // Ensure Vanshika Thakare and Ayush Deshmukh are upgraded to Master Admin in stored data
+  const upgradedAccounts = userAccounts.map((acc) => {
+    if (acc.username === 'vanshika.thakare' || acc.username === 'ayush.deshmukh') {
+      return { ...acc, role: 'master_admin' as UserRole };
+    }
+    return acc;
+  });
+
+  const upgradedMembers = members.map((m) => {
+    if (m.username === 'vanshika.thakare' || m.username === 'ayush.deshmukh') {
+      return { ...m, role: 'Master Admin' as MemberRole };
+    }
+    return m;
+  });
+
   // Clear any legacy auth/account keys to refresh unique lead passwords and prevent automatic logins
   try {
     localStorage.removeItem('ecell_auth');
@@ -134,13 +149,17 @@ function initializeState(): AppState {
     user: null,
   });
 
+  if (auth.user && (auth.user.username === 'vanshika.thakare' || auth.user.username === 'ayush.deshmukh')) {
+    auth.user = { ...auth.user, role: 'master_admin' };
+  }
+
   return {
-    members,
+    members: upgradedMembers,
     sessions,
     records,
     momDocuments,
     auditLogs,
-    userAccounts,
+    userAccounts: upgradedAccounts,
     settings,
     auth,
     toasts: [],
@@ -425,6 +444,7 @@ interface AppContextType {
   state: AppState;
   dispatch: React.Dispatch<Action>;
   addToast: (toast: Omit<ToastMessage, 'id'>) => void;
+  isPrimaryMasterAdmin: () => boolean;
   isMasterAdmin: () => boolean;
   isPresident: () => boolean;
   isGeneralSecretary: () => boolean;
@@ -623,8 +643,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const user = state.auth.user;
 
-  const isMasterAdmin = useCallback(() => {
+  // Primary Master Admin is Parth Amilkanthwar (founder & root owner)
+  const isPrimaryMasterAdmin = useCallback(() => {
     return user?.role === 'master_admin' && user?.username === 'parth.amilkanthwar';
+  }, [user]);
+
+  // Master Admin access includes Parth Amilkanthwar, Vanshika Thakare, and Ayush Deshmukh
+  const isMasterAdmin = useCallback(() => {
+    if (!user) return false;
+    return (
+      user.role === 'master_admin' ||
+      user.username === 'parth.amilkanthwar' ||
+      user.username === 'vanshika.thakare' ||
+      user.username === 'ayush.deshmukh'
+    );
   }, [user]);
 
   // General Secretary has the exact same rights as President
@@ -682,11 +714,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [user]
   );
 
-  // Master Admin can edit anyone; Each user can edit their OWN profile; Leads can edit Co-Leads & members of their own domain; Co-Leads can edit members of their own domain
+  // Master Admin can edit anyone (except only Parth can edit Parth's profile); Each user can edit their OWN profile; Leads can edit Co-Leads & members of their own domain; Co-Leads can edit members of their own domain
   const canEditMember = useCallback(
     (targetMember: Member) => {
       if (!user) return false;
-      if (isMasterAdmin()) return true;
+      if (isMasterAdmin()) {
+        // Protect Parth Amilkanthwar's profile so only Parth himself can edit it
+        if (targetMember.username === 'parth.amilkanthwar' && user.username !== 'parth.amilkanthwar') {
+          return false;
+        }
+        return true;
+      }
       if (isSelf(targetMember)) return true;
       if (isLeadMember(targetMember)) {
         // Domain Lead can edit Domain Co-Lead in their vertical
@@ -909,6 +947,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         state,
         dispatch,
         addToast,
+        isPrimaryMasterAdmin,
         isMasterAdmin,
         isPresident,
         isGeneralSecretary,

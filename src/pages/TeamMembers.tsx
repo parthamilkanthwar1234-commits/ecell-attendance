@@ -72,6 +72,7 @@ export default function TeamMembers() {
     addToast,
     getMemberAttendancePercentage,
     isMasterAdmin,
+    isPrimaryMasterAdmin,
     isPresident,
     canEditMember,
     canDeleteMember,
@@ -140,11 +141,17 @@ export default function TeamMembers() {
   const handleOpenEdit = (m: Member, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!canEditMember(m)) {
-      if (isLeadMember(m)) {
+      if (m.username === 'parth.amilkanthwar') {
         addToast({
           type: 'error',
           title: 'Access Restricted',
-          message: 'Only Master Admin (Parth Amilkanthwar) can edit Core Committee Lead profiles.',
+          message: 'Primary Master Admin (Parth Amilkanthwar) profile is protected and can only be edited by Parth.',
+        });
+      } else if (isLeadMember(m)) {
+        addToast({
+          type: 'error',
+          title: 'Access Restricted',
+          message: 'Only Master Admins can edit Core Committee Lead profiles.',
         });
       } else {
         addToast({
@@ -198,6 +205,16 @@ export default function TeamMembers() {
         
         let assignedRole: MemberRole = editingMember.role;
         if (isMasterAdmin()) {
+          // Only Primary Master Admin can assign Master Admin role
+          if (formData.role === 'Master Admin' && !isPrimaryMasterAdmin() && editingMember.role !== 'Master Admin') {
+            addToast({
+              type: 'error',
+              title: 'Permission Denied',
+              message: 'Only Primary Master Admin (Parth Amilkanthwar) can assign the Master Admin role.',
+            });
+            setIsSaving(false);
+            return;
+          }
           assignedRole = formData.role;
         } else if (user?.role === 'lead_admin' || user?.role === 'co_lead') {
           if (formData.role === 'Domain Co-Lead' || formData.role === 'Member') {
@@ -352,6 +369,15 @@ export default function TeamMembers() {
 
   const handleConfirmDelete = async () => {
     if (!memberToDelete) return;
+    if (memberToDelete.username === 'parth.amilkanthwar' || memberToDelete.role === 'Master Admin') {
+      addToast({
+        type: 'error',
+        title: 'Action Denied',
+        message: 'Master Admin profiles are protected and cannot be deleted.',
+      });
+      setMemberToDelete(null);
+      return;
+    }
     if (!canDeleteMember(memberToDelete)) {
       addToast({
         type: 'error',
@@ -793,7 +819,9 @@ export default function TeamMembers() {
                     <option value="Domain Lead">Domain Lead</option>
                     <option value="General Secretary">General Secretary</option>
                     <option value="President">President</option>
-                    <option value="Master Admin">Master Admin</option>
+                    {isPrimaryMasterAdmin() && (
+                      <option value="Master Admin">Master Admin</option>
+                    )}
                   </>
                 ) : (
                   <>

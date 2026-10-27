@@ -33,7 +33,7 @@ export const CORE_LEADS: Array<{
 }> = [
   {
     name: 'Parth Amilkanthwar',
-    designation: 'Finance Management Lead / Master Admin',
+    designation: 'Finance Management Lead / Primary Master Admin',
     username: 'parth.amilkanthwar',
     domain: 'Finance Management',
     role: 'master_admin',
@@ -60,10 +60,10 @@ export const CORE_LEADS: Array<{
   },
   {
     name: 'Ayush Deshmukh',
-    designation: 'Event Production & Curation Lead',
+    designation: 'Event Production & Curation Lead / Master Admin',
     username: 'ayush.deshmukh',
     domain: 'Event Production & Curation',
-    role: 'lead_admin',
+    role: 'master_admin',
     phone: '+91 98220 11004',
     password: 'Ayush#Events$2026',
   },
@@ -96,10 +96,10 @@ export const CORE_LEADS: Array<{
   },
   {
     name: 'Vanshika Thakare',
-    designation: 'Content Development Lead',
+    designation: 'Content Development Lead / Master Admin',
     username: 'vanshika.thakare',
     domain: 'Content Development',
-    role: 'lead_admin',
+    role: 'master_admin',
     phone: '+91 98220 11008',
     password: 'Vanshika#Content$2026',
   },
