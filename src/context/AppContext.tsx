@@ -9,6 +9,8 @@ import {
   MeetingMinutes,
   AuditLog,
   ECellDomain,
+  UserRole,
+  MemberRole,
 } from '../types';
 import {
   generateAllMembers,
