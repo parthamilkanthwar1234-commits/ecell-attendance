@@ -20,7 +20,7 @@ const pageTitles: Record<string, string> = {
 };
 
 export default function Layout() {
-  const { state, dispatch, syncFromCloud, addToast } = useApp();
+  const { state, dispatch, syncFromCloud, addToast, isMoMScribe } = useApp();
   const location = useLocation();
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -101,6 +101,8 @@ export default function Layout() {
                       ? 'Domain Co-Lead'
                       : user.role === 'lead_admin'
                       ? 'Domain Lead'
+                      : isMoMScribe()
+                      ? 'MoM Scribe'
                       : user.role.replace('_', ' ')}
                   </div>
                 </div>

@@ -427,6 +427,64 @@ export default function Settings() {
           </div>
         </div>
 
+        {/* Domain Minutes of Meeting (MoM) Scribes */}
+        <div className="bg-dark-card border border-dark-border rounded-xl p-5 shadow-sm space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-dark-border">
+            <div className="flex items-center gap-2">
+              <Shield className="h-5 w-5 text-accent-light" />
+              <div>
+                <h2 className="text-base font-bold text-white">Domain MoM Scribes</h2>
+                <p className="text-xs text-gray-400">
+                  Assigned members who have official authorization to write, edit, and maintain digital Minutes of Meeting (MoM) for their domain.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {formData.departments
+              .filter((d) => d !== 'All Domains' && d !== 'Unassigned')
+              .map((dept) => {
+                const currentScribe = formData.domain_mom_scribes?.[dept] || '';
+                const domainMembers = state.members.filter((m) => m.department === dept);
+
+                return (
+                  <div key={dept} className="p-3 bg-dark-bg border border-dark-border rounded-lg space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-white">{dept}</span>
+                      {currentScribe && (
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-accent-primary/10 text-accent-light border border-accent-primary/20 font-mono">
+                          @{currentScribe}
+                        </span>
+                      )}
+                    </div>
+                    <select
+                      value={currentScribe}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormData({
+                          ...formData,
+                          domain_mom_scribes: {
+                            ...(formData.domain_mom_scribes || {}),
+                            [dept]: val,
+                          },
+                        });
+                      }}
+                      className="w-full px-2.5 py-1.5 bg-dark-card border border-dark-border rounded text-xs text-white focus:outline-none focus:border-accent-primary"
+                    >
+                      <option value="">-- Domain Lead & Master Admin Only --</option>
+                      {domainMembers.map((m) => (
+                        <option key={m.id} value={m.username || m.id}>
+                          {m.name} ({m.role}) {m.username ? `@${m.username}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+
         {/* Authorized Administrators */}
         <div className="bg-dark-card border border-dark-border rounded-xl p-5 shadow-sm space-y-4">
           <div className="flex items-center gap-2 pb-3 border-b border-dark-border">

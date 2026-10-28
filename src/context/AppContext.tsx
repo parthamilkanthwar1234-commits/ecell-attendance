@@ -67,6 +67,7 @@ type Action =
   | { type: 'ADD_MOM'; payload: MeetingMinutes }
   | { type: 'UPDATE_MOM'; payload: MeetingMinutes }
   | { type: 'DELETE_MOM'; payload: string }
+  | { type: 'SET_MOMS'; payload: MeetingMinutes[] }
   | { type: 'ADD_AUDIT_LOG'; payload: AuditLog }
   | { type: 'UPDATE_USER_ACCOUNT'; payload: UserAccount }
   | { type: 'ADD_USER_ACCOUNT'; payload: UserAccount }
@@ -379,6 +380,16 @@ function appReducer(state: AppState, action: Action): AppState {
         momDocuments: state.momDocuments.filter((m) => m.id !== action.payload),
       };
 
+    case 'SET_MOMS': {
+      const map = new Map<string, MeetingMinutes>();
+      state.momDocuments.forEach((m) => map.set(m.session_id, m));
+      action.payload.forEach((m) => map.set(m.session_id, m));
+      return {
+        ...state,
+        momDocuments: Array.from(map.values()),
+      };
+    }
+
     case 'ADD_AUDIT_LOG':
       return { ...state, auditLogs: [action.payload, ...state.auditLogs] };
 
@@ -450,6 +461,7 @@ interface AppContextType {
   isGeneralSecretary: () => boolean;
   isLeadAdmin: () => boolean;
   isCoLead: () => boolean;
+  isMoMScribe: () => boolean;
   isMember: () => boolean;
   canManageSession: (session: AttendanceSession) => boolean;
   canDeleteSession: (session: AttendanceSession) => boolean;
@@ -488,6 +500,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       if (sessRes.data) {
         dispatch({ type: 'SET_SESSIONS', payload: sessRes.data });
+
+        // Extract cloud-synced MoM documents attached to sessions
+        const cloudMoMs: MeetingMinutes[] = [];
+        sessRes.data.forEach((sess: any) => {
+          if (sess.description && sess.description.startsWith('__ECELL_MOM__:')) {
+            try {
+              const parsed = JSON.parse(sess.description.substring('__ECELL_MOM__:'.length));
+              cloudMoMs.push(parsed);
+            } catch (e) {
+              console.warn('Could not parse cloud MoM:', e);
+            }
+          }
+        });
+        if (cloudMoMs.length > 0) {
+          dispatch({ type: 'SET_MOMS', payload: cloudMoMs });
+        }
       }
 
       if (memRes.data && memRes.data.length > 0) {
@@ -849,10 +877,58 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (session.domain === 'General E-Cell / Core Committee') return true;
         return user.domain === session.domain;
       }
+
+      // Check configured domain scribe in settings
+      const assignedScribe = state.settings.domain_mom_scribes?.[session.domain];
+      if (assignedScribe) {
+        if (
+          user.username.toLowerCase() === assignedScribe.toLowerCase() ||
+          user.full_name.toLowerCase() === assignedScribe.toLowerCase()
+        ) {
+          return true;
+        }
+      }
+
+      // Guaranteed MoM Scribes designated by user:
+      // 1. Finance Management: Ovee Pawar (ovee.pawar)
+      if (
+        (user.username.toLowerCase() === 'ovee.pawar' || user.full_name.toLowerCase().includes('ovee')) &&
+        (session.domain === 'Finance Management' || session.domain === 'All Domains')
+      ) {
+        return true;
+      }
+
+      // 2. Event Production & Curation: Ayush Gosavi (ayush.gosavi)
+      if (
+        (user.username.toLowerCase() === 'ayush.gosavi' || user.full_name.toLowerCase().includes('gosavi')) &&
+        (session.domain === 'Event Production & Curation' || session.domain === 'All Domains')
+      ) {
+        return true;
+      }
+
       return false;
     },
-    [user]
+    [user, state.settings.domain_mom_scribes]
   );
+
+  const isMoMScribe = useCallback(() => {
+    if (!user) return false;
+    if (
+      user.username.toLowerCase() === 'ovee.pawar' ||
+      user.full_name.toLowerCase().includes('ovee') ||
+      user.username.toLowerCase() === 'ayush.gosavi' ||
+      user.full_name.toLowerCase().includes('gosavi')
+    ) {
+      return true;
+    }
+    const scribes = Object.values(state.settings.domain_mom_scribes || {});
+    return scribes.some(
+      (s) =>
+        s &&
+        (s.toLowerCase() === user.username.toLowerCase() ||
+          s.toLowerCase() === user.full_name.toLowerCase())
+    );
+  }, [user, state.settings.domain_mom_scribes]);
 
   const canViewSession = useCallback(
     (session: AttendanceSession) => {
@@ -953,6 +1029,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         isGeneralSecretary,
         isLeadAdmin,
         isCoLead,
+        isMoMScribe,
         isMember,
         canManageSession,
         canDeleteSession,

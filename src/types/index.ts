@@ -42,12 +42,33 @@ export interface MeetingMinutes {
   id: string;
   session_id: string;
   document_name: string;
-  document_type: string; // 'pdf' | 'docx' | 'doc' | 'txt'
+  document_type: string; // 'digital' | 'pdf' | 'docx' | 'doc' | 'txt'
   document_size: string;
   document_url?: string;
   summary: string;
   action_items: ActionItem[];
   notes?: string;
+
+  // Official E-Cell RSCOE MoM Format Fields
+  domain?: string;
+  date?: string;
+  time?: string;
+  venue?: string;
+  conducted_by?: string;
+  prepared_by?: string;
+
+  attendance_present?: string;
+  attendance_absent?: string;
+
+  agenda_discussion?: string[];
+  key_decisions?: string[];
+  updates_requirements?: string[];
+
+  next_meeting_date?: string;
+  next_meeting_agenda?: string;
+  next_meeting_prepared_by?: string;
+  verified_by?: string;
+
   uploaded_by: string;
   uploaded_by_name: string;
   uploaded_at: string;
@@ -154,6 +175,7 @@ export interface AppSettings {
   departments: ECellDomain[];
   default_view: 'dashboard' | 'attendance' | 'leadership';
   member_login_enabled: boolean;
+  domain_mom_scribes?: Partial<Record<ECellDomain, string>>;
   created_at: string;
   updated_at: string;
 }

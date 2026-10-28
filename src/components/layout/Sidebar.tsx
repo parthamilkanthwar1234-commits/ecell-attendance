@@ -24,7 +24,7 @@ interface NavItem {
 }
 
 export default function Sidebar() {
-  const { state, dispatch } = useApp();
+  const { state, dispatch, isMoMScribe } = useApp();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -60,7 +60,7 @@ export default function Sidebar() {
       items.push({ label: 'Team Members', path: '/members', icon: Users });
       items.push({ label: 'Attendance History', path: '/attendance/history', icon: History });
       items.push({ label: 'Analytics & Reports', path: '/analytics', icon: BarChart3 });
-    } else if (user?.role === 'lead_admin') {
+    } else if (user?.role === 'lead_admin' || user?.role === 'co_lead') {
       items.push({ label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard });
       items.push({ label: 'Meetings & Events', path: '/sessions', icon: Calendar });
       items.push({ label: 'Mark Attendance', path: '/attendance/mark', icon: ClipboardCheck });
@@ -96,6 +96,9 @@ export default function Sidebar() {
       case 'co_lead':
         return 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40';
       default:
+        if (isMoMScribe()) {
+          return 'bg-amber-500/20 text-amber-300 border-amber-500/40';
+        }
         return 'bg-dark-bg text-gray-400 border-dark-border';
     }
   };
@@ -113,6 +116,9 @@ export default function Sidebar() {
       case 'co_lead':
         return 'Domain Co-Lead';
       default:
+        if (isMoMScribe()) {
+          return 'MoM Scribe';
+        }
         return 'Member';
     }
   };

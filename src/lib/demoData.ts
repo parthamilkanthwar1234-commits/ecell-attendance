@@ -201,6 +201,10 @@ export function generateDefaultSettings(): AppSettings {
     departments: [...DOMAINS],
     default_view: 'dashboard',
     member_login_enabled: true,
+    domain_mom_scribes: {
+      'Finance Management': 'ovee.pawar',
+      'Event Production & Curation': 'ayush.gosavi',
+    },
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };

@@ -28,11 +28,14 @@ import { useApp } from '../context/AppContext';
 import {
   AttendanceRecord,
   AttendanceStatus,
+  AttendanceSession,
   MeetingMinutes,
   ActionItem,
   SessionStatus
 } from '../types';
 import { formatDate, getStatusBgColor, getStatusLabel, exportToCSV } from '../lib/utils';
+import { MoMViewer } from '../components/mom/MoMViewer';
+import { MoMEditorModal } from '../components/mom/MoMEditorModal';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import Modal from '../components/ui/Modal';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
@@ -56,7 +59,19 @@ export default function SessionDetails() {
   } = useApp();
 
   const session = state.sessions.find((s) => s.id === id);
-  const momDoc = id ? getSessionMoM(id) : undefined;
+
+  const rawMoMFromSession = useMemo(() => {
+    if (session?.description && session.description.startsWith('__ECELL_MOM__:')) {
+      try {
+        return JSON.parse(session.description.substring('__ECELL_MOM__:'.length)) as MeetingMinutes;
+      } catch (e) {
+        return undefined;
+      }
+    }
+    return undefined;
+  }, [session?.description]);
+
+  const momDoc = id ? (getSessionMoM(id) || rawMoMFromSession) : undefined;
 
   const existingRecords = useMemo(() => {
     if (!session) return [];
@@ -116,20 +131,9 @@ export default function SessionDetails() {
 
   // Modals
   const [isMoMModalOpen, setIsMoMModalOpen] = useState(false);
-  const [isViewMoMModalOpen, setIsViewMoMModalOpen] = useState(false);
   const [isConfirmSaveOpen, setIsConfirmSaveOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [auditReason, setAuditReason] = useState('');
-
-  // MoM Upload Form State
-  const [momForm, setMomForm] = useState({
-    document_name: '',
-    document_type: 'pdf',
-    document_size: '1.2 MB',
-    summary: '',
-    notes: '',
-    action_items_text: '',
-  });
 
   if (!session) {
     return (
@@ -287,78 +291,47 @@ export default function SessionDetails() {
     }
   };
 
-  // Open MoM Form
-  const handleOpenMoMModal = () => {
-    if (momDoc) {
-      setMomForm({
-        document_name: momDoc.document_name,
-        document_type: momDoc.document_type,
-        document_size: momDoc.document_size,
-        summary: momDoc.summary,
-        notes: momDoc.notes || '',
-        action_items_text: momDoc.action_items.map((a) => `${a.task} [${a.assigned_to_name}]`).join('\n'),
+  // Save MoM Document & Sync to Cloud
+  const handleSaveMoMDocument = async (newMoM: MeetingMinutes) => {
+    if (!session) return;
+
+    try {
+      // 1. Pack into session description for instant Supabase cloud synchronization
+      const momPayload = JSON.stringify(newMoM);
+      const updatedSession: AttendanceSession = {
+        ...session,
+        description: `__ECELL_MOM__:${momPayload}`,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (isSupabaseConfigured() && supabase) {
+        const { error: sessErr } = await supabase
+          .from('sessions')
+          .update({
+            description: updatedSession.description,
+            updated_at: updatedSession.updated_at,
+          })
+          .eq('id', session.id);
+        if (sessErr) console.error('Cloud MoM save error:', sessErr);
+      }
+
+      dispatch({ type: 'UPDATE_SESSION', payload: updatedSession });
+      dispatch({ type: momDoc ? 'UPDATE_MOM' : 'ADD_MOM', payload: newMoM });
+
+      addToast({
+        type: 'success',
+        title: momDoc ? 'MoM Updated & Cloud Synced' : 'MoM Recorded & Cloud Synced',
+        message: `Official Minutes of Meeting for "${session.name}" saved and synced to cloud.`,
       });
-    } else {
-      setMomForm({
-        document_name: `${session.name.replace(/[^a-zA-Z0-9]/g, '_')}_MoM.pdf`,
-        document_type: 'pdf',
-        document_size: '1.4 MB',
-        summary: `Minutes of the meeting conducted for ${session.name} under domain ${session.domain}. Discussed operational timeline, deliverables, and resource allocation.`,
-        notes: 'Meeting concluded with consensus on all agenda points.',
-        action_items_text: 'Review stage layout design [Ayush Deshmukh]\nPrepare budget estimation table [Parth Amilkanthwar]',
+    } catch (err) {
+      console.error('Error saving MoM:', err);
+      addToast({
+        type: 'error',
+        title: 'Error Saving MoM',
+        message: 'Could not sync MoM to cloud. Please check network.',
       });
+      throw err;
     }
-    setIsMoMModalOpen(true);
-  };
-
-  // Save MoM
-  const handleSaveMoM = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!momForm.document_name.trim() || !momForm.summary.trim()) {
-      addToast({ type: 'error', title: 'Error', message: 'Document name and summary are required.' });
-      return;
-    }
-
-    // Parse action items
-    const actionItems: ActionItem[] = momForm.action_items_text
-      .split('\n')
-      .filter((l) => l.trim().length > 0)
-      .map((line, idx) => {
-        const match = line.match(/(.*?)\[(.*?)\]/);
-        return {
-          id: `act-${Date.now()}-${idx}`,
-          task: match ? match[1].trim() : line.trim(),
-          assigned_to_name: match ? match[2].trim() : 'Unassigned',
-          due_date: formatDate(session.date),
-          status: 'Pending',
-        };
-      });
-
-    const newMoM: MeetingMinutes = {
-      id: momDoc?.id || `mom-${session.id}`,
-      session_id: session.id,
-      document_name: momForm.document_name,
-      document_type: momForm.document_type,
-      document_size: momForm.document_size,
-      summary: momForm.summary,
-      notes: momForm.notes,
-      action_items: actionItems,
-      uploaded_by: state.auth.user?.username || 'admin',
-      uploaded_by_name: state.auth.user?.full_name || 'Domain Lead',
-      uploaded_at: momDoc?.uploaded_at || new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      version: (momDoc?.version || 0) + 1,
-    };
-
-    if (momDoc) {
-      dispatch({ type: 'UPDATE_MOM', payload: newMoM });
-      addToast({ type: 'success', title: 'MoM Updated', message: 'New version of Minutes of Meeting saved.' });
-    } else {
-      dispatch({ type: 'ADD_MOM', payload: newMoM });
-      addToast({ type: 'success', title: 'MoM Uploaded', message: 'Official meeting document successfully attached.' });
-    }
-
-    setIsMoMModalOpen(false);
   };
 
   // Delete session handler (Only session creator or Master Admin)
@@ -443,11 +416,11 @@ export default function SessionDetails() {
 
           {userCanUploadMoM && (
             <button
-              onClick={handleOpenMoMModal}
+              onClick={() => setIsMoMModalOpen(true)}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-accent-primary hover:bg-blue-600 text-white font-semibold text-xs transition-colors cursor-pointer shadow-lg shadow-blue-500/20"
             >
-              {momDoc ? <RefreshCw className="h-4 w-4" /> : <Upload className="h-4 w-4" />}
-              <span>{momDoc ? 'Replace MoM' : 'Upload MoM'}</span>
+              <FileText className="h-4 w-4" />
+              <span>{momDoc ? 'Edit Minutes of Meeting' : 'Create Official MoM'}</span>
             </button>
           )}
         </div>
@@ -766,85 +739,42 @@ export default function SessionDetails() {
                 : 'bg-status-late/15 text-status-late border border-status-late/30'
             }`}
           >
-            {momDoc ? 'MoM Uploaded' : 'MoM Pending'}
+            {momDoc ? 'MoM Recorded' : 'MoM Pending'}
           </span>
         </div>
 
         {momDoc ? (
-          <div className="p-4 bg-dark-bg rounded-xl border border-dark-border space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-accent-primary/20 text-accent-light flex items-center justify-center font-bold text-xs uppercase">
-                  {momDoc.document_type}
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-white">{momDoc.document_name}</h3>
-                  <p className="text-xs text-gray-500">
-                    {momDoc.document_size} · Uploaded by {momDoc.uploaded_by_name} on{' '}
-                    {formatDate(momDoc.uploaded_at)} (v{momDoc.version})
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setIsViewMoMModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-gray-200 text-xs font-semibold cursor-pointer"
-                >
-                  <Eye className="h-3.5 w-3.5 text-accent-light" />
-                  <span>View Summary</span>
-                </button>
-                <button
-                  onClick={() =>
-                    addToast({
-                      type: 'success',
-                      title: 'Download Started',
-                      message: `Downloading ${momDoc.document_name}...`,
-                    })
-                  }
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-primary/10 hover:bg-accent-primary/20 text-accent-light text-xs font-semibold cursor-pointer border border-accent-primary/30"
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  <span>Download File</span>
-                </button>
-                {userCanUploadMoM && (
-                  <button
-                    onClick={handleOpenMoMModal}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-gray-300 text-xs font-semibold cursor-pointer"
-                  >
-                    <RefreshCw className="h-3.5 w-3.5" />
-                    <span>Replace</span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-dark-border space-y-2">
-              <span className="text-xs font-bold text-white uppercase tracking-wider block">
-                Executive Meeting Summary
-              </span>
-              <p className="text-xs text-gray-300 leading-relaxed">{momDoc.summary}</p>
-            </div>
-          </div>
+          <MoMViewer
+            mom={momDoc}
+            session={session}
+            canEdit={userCanUploadMoM}
+            onEdit={() => setIsMoMModalOpen(true)}
+          />
         ) : (
           <div className="p-8 text-center bg-dark-bg rounded-xl border border-dashed border-dark-border space-y-3">
             <div className="inline-flex p-3 rounded-full bg-dark-card">
               <FileText className="h-6 w-6 text-gray-500" />
             </div>
-            <p className="text-xs text-gray-400">
-              MoM has not been uploaded yet for this session.
-            </p>
+            <div>
+              <h3 className="text-sm font-bold text-white mb-1">
+                Official Minutes of Meeting (MoM) Pending
+              </h3>
+              <p className="text-xs text-gray-400 max-w-md mx-auto">
+                No Minutes of Meeting have been recorded yet for this session.
+                Authorized domain scribes and leads can record official meeting details, attendance, agenda, key decisions, and action items directly on the portal.
+              </p>
+            </div>
             {userCanUploadMoM ? (
               <button
-                onClick={handleOpenMoMModal}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-accent-primary hover:bg-blue-600 text-white font-semibold text-xs cursor-pointer shadow-lg shadow-blue-500/20"
+                onClick={() => setIsMoMModalOpen(true)}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent-primary hover:bg-blue-600 text-white font-semibold text-xs cursor-pointer shadow-lg shadow-blue-500/20 transition-all"
               >
-                <Upload className="h-4 w-4" />
-                <span>Upload Minutes of Meeting</span>
+                <Plus className="h-4 w-4" />
+                <span>Create Official Minutes of Meeting</span>
               </button>
             ) : (
               <p className="text-[11px] text-gray-500">
-                The domain lead will upload the official document post meeting.
+                The domain lead or assigned domain scribe will record the official MoM post-meeting.
               </p>
             )}
           </div>
@@ -937,122 +867,14 @@ export default function SessionDetails() {
         </div>
       </Modal>
 
-      {/* Upload MoM Modal */}
-      <Modal
+      {/* Official Minutes of Meeting (MoM) Editor Modal */}
+      <MoMEditorModal
         isOpen={isMoMModalOpen}
         onClose={() => setIsMoMModalOpen(false)}
-        title={momDoc ? 'Replace Minutes of Meeting' : 'Upload Minutes of Meeting (MoM)'}
-        size="lg"
-      >
-        <form onSubmit={handleSaveMoM} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-400 mb-1">
-                Document File Name *
-              </label>
-              <input
-                type="text"
-                required
-                value={momForm.document_name}
-                onChange={(e) => setMomForm({ ...momForm, document_name: e.target.value })}
-                className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white focus:outline-none focus:border-accent-primary"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-400 mb-1">
-                Supported File Format
-              </label>
-              <select
-                value={momForm.document_type}
-                onChange={(e) => setMomForm({ ...momForm, document_type: e.target.value })}
-                className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white focus:outline-none focus:border-accent-primary"
-              >
-                <option value="pdf">PDF Document (.pdf)</option>
-                <option value="docx">Microsoft Word (.docx)</option>
-                <option value="doc">Microsoft Word (.doc)</option>
-                <option value="txt">Plain Text (.txt)</option>
-              </select>
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-gray-400 mb-1">
-                Meeting Executive Summary *
-              </label>
-              <textarea
-                rows={3}
-                required
-                value={momForm.summary}
-                onChange={(e) => setMomForm({ ...momForm, summary: e.target.value })}
-                placeholder="Key decisions, discussions, and outcomes..."
-                className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white focus:outline-none focus:border-accent-primary resize-none"
-              />
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-gray-400 mb-1">
-                Action Items (1 per line, format: Task description [Assigned Member Name])
-              </label>
-              <textarea
-                rows={3}
-                value={momForm.action_items_text}
-                onChange={(e) => setMomForm({ ...momForm, action_items_text: e.target.value })}
-                placeholder="Finalize sponsor deliverables [Parth Amilkanthwar]"
-                className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white focus:outline-none focus:border-accent-primary resize-none font-mono"
-              />
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2 pt-3 border-t border-dark-border">
-            <button
-              type="button"
-              onClick={() => setIsMoMModalOpen(false)}
-              className="px-4 py-2 rounded-lg bg-dark-bg border border-dark-border text-gray-300 text-xs"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-5 py-2 rounded-lg bg-accent-primary hover:bg-blue-600 text-white font-semibold text-xs cursor-pointer shadow-lg shadow-blue-500/20"
-            >
-              {momDoc ? 'Replace MoM Document' : 'Upload Document'}
-            </button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* View MoM Modal */}
-      {momDoc && (
-        <Modal
-          isOpen={isViewMoMModalOpen}
-          onClose={() => setIsViewMoMModalOpen(false)}
-          title={`MoM: ${momDoc.document_name}`}
-          size="lg"
-        >
-          <div className="space-y-4">
-            <div className="p-3 bg-dark-bg rounded-lg border border-dark-border text-xs text-gray-400 flex items-center justify-between">
-              <span>Uploaded by {momDoc.uploaded_by_name}</span>
-              <span>Version {momDoc.version}</span>
-            </div>
-
-            <div>
-              <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-2">Summary</h4>
-              <p className="text-xs text-gray-300 leading-relaxed bg-dark-bg p-3 rounded-lg border border-dark-border">
-                {momDoc.summary}
-              </p>
-            </div>
-
-            {momDoc.notes && (
-              <div>
-                <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-2">Notes</h4>
-                <p className="text-xs text-gray-300 bg-dark-bg p-3 rounded-lg border border-dark-border">
-                  {momDoc.notes}
-                </p>
-              </div>
-            )}
-          </div>
-        </Modal>
-      )}
+        session={session}
+        existingMoM={momDoc}
+        onSave={handleSaveMoMDocument}
+      />
 
       {/* Delete Session Confirmation Dialog */}
       <ConfirmDialog
