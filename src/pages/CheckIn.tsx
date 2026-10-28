@@ -10,6 +10,7 @@ import {
   Building,
   User,
   ShieldCheck,
+  ShieldAlert,
   ArrowRight,
   LogIn,
   RotateCw,
@@ -18,17 +19,38 @@ import { useApp } from '../context/AppContext';
 import { AttendanceRecord, AttendanceSession, Member } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
+// Helper to parse 24h ('16:00') and 12h ('04:00 PM')
+function parseSessionDateTime(dateStr: string, timeStr: string): Date | null {
+  if (!dateStr || !timeStr) return null;
+  try {
+    const isPM = /pm/i.test(timeStr);
+    const isAM = /am/i.test(timeStr);
+    const cleanTime = timeStr.replace(/[^0-9:]/g, '').trim();
+    const parts = cleanTime.split(':');
+    let hours = parseInt(parts[0], 10);
+    const minutes = parts[1] ? parseInt(parts[1], 10) : 0;
+    if (isPM && hours < 12) hours += 12;
+    if (isAM && hours === 12) hours = 0;
+    const [year, month, day] = dateStr.split('-').map(Number);
+    if (!year || !month || !day) return null;
+    const d = new Date(year, month - 1, day, hours, minutes, 0, 0);
+    return isNaN(d.getTime()) ? null : d;
+  } catch (e) {
+    return null;
+  }
+}
+
 export default function CheckIn() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { state, dispatch, addToast, syncFromCloud } = useApp();
+  const { state, dispatch, addToast } = useApp();
   const sessionId = searchParams.get('session');
   const token = searchParams.get('token');
   const isLockedParam = searchParams.get('locked') === 'true';
 
   const [isProcessing, setIsProcessing] = useState(true);
   const [checkInStatus, setCheckInStatus] = useState<
-    'idle' | 'success' | 'already_present' | 'not_eligible' | 'session_not_found' | 'locked' | 'error'
+    'idle' | 'success' | 'already_present' | 'not_eligible' | 'time_locked' | 'session_not_found' | 'locked' | 'error'
   >('idle');
   const [statusMessage, setStatusMessage] = useState('');
   const [checkedRecord, setCheckedRecord] = useState<AttendanceRecord | null>(null);
@@ -111,25 +133,40 @@ export default function CheckIn() {
       const memberId = currentMember?.id || currentUser.id;
       const memberDomain = currentMember?.department || currentUser.domain;
 
-      // 1. Eligibility Check
-      const isDomainEligible =
-        session.domain === 'All Domains' ||
-        session.domain === 'General E-Cell / Core Committee' ||
+      // Executive privilege: Master Admin, President, and General Secretary can scan across all domains
+      const isExecutiveOrMaster =
         currentUser.role === 'master_admin' ||
         currentUser.role === 'president' ||
-        currentUser.role === 'general_secretary' ||
-        memberDomain === session.domain;
+        currentUser.role === 'general_secretary';
 
-      if (!isDomainEligible) {
-        setCheckInStatus('not_eligible');
+      // 1. Time Window Check (must have reached scheduled start time, unless executive/master admin)
+      const sessionStart = parseSessionDateTime(session.date, session.start_time);
+      if (sessionStart && new Date() < sessionStart && !isExecutiveOrMaster) {
+        setCheckInStatus('time_locked');
         setStatusMessage(
-          `This meeting is exclusively for the "${session.domain}" domain. You are currently registered under "${memberDomain}".`
+          `Meeting attendance is not yet active. This meeting is scheduled for ${session.date} starting at ${session.start_time}. Check-in will open when the meeting begins.`
         );
         setIsProcessing(false);
         return;
       }
 
-      // 2. Check Existing Attendance Record
+      // 2. Strict Domain Check
+      // Other domains members CANNOT scan the QR of another domain. Only Master Admins, President, and GS can do that.
+      const isAllDomainsSession =
+        session.domain === 'All Domains' || session.domain === 'General E-Cell / Core Committee';
+
+      const isDomainAuthorized = isAllDomainsSession || isExecutiveOrMaster || memberDomain === session.domain;
+
+      if (!isDomainAuthorized) {
+        setCheckInStatus('not_eligible');
+        setStatusMessage(
+          `Cross-Domain Scan Blocked: This meeting is strictly for members of "${session.domain}". You are registered under "${memberDomain}". Only Master Admins, President, and General Secretary can scan attendance across other domains.`
+        );
+        setIsProcessing(false);
+        return;
+      }
+
+      // 3. Check Existing Attendance Record
       const existingRec = state.records.find(
         (r) => r.session_id === session.id && r.member_id === memberId
       );
@@ -137,12 +174,12 @@ export default function CheckIn() {
       if (existingRec && (existingRec.status === 'present' || existingRec.status === 'late')) {
         setCheckedRecord(existingRec);
         setCheckInStatus('already_present');
-        setStatusMessage('Your attendance for this meeting has already been marked as Present.');
+        setStatusMessage('Your attendance for this meeting has already been confirmed as Present.');
         setIsProcessing(false);
         return;
       }
 
-      // 3. Create & Commit Attendance Record
+      // 4. Create & Commit Attendance Record
       const newRecord: AttendanceRecord = {
         id: `rec-${session.id}-${memberId}`,
         session_id: session.id,
@@ -254,7 +291,7 @@ export default function CheckIn() {
   return (
     <div className="min-h-screen bg-dark-bg flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-dark-card border border-dark-border rounded-2xl p-6 sm:p-8 shadow-2xl space-y-6">
-        {/* State Banner */}
+        {/* Success State */}
         {checkInStatus === 'success' && (
           <div className="text-center space-y-3">
             <div className="w-16 h-16 rounded-2xl bg-status-success/15 border border-status-success/30 flex items-center justify-center mx-auto text-status-success">
@@ -266,12 +303,13 @@ export default function CheckIn() {
               </span>
               <h2 className="text-xl font-extrabold text-white mt-1">You're Marked Present!</h2>
               <p className="text-xs text-gray-400 mt-1">
-                Your attendance has been officially confirmed and cloud-synced to the meeting roster.
+                Your attendance has been officially verified and cloud-synced to the meeting roster.
               </p>
             </div>
           </div>
         )}
 
+        {/* Already Present State */}
         {checkInStatus === 'already_present' && (
           <div className="text-center space-y-3">
             <div className="w-16 h-16 rounded-2xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center mx-auto text-blue-400">
@@ -287,21 +325,41 @@ export default function CheckIn() {
           </div>
         )}
 
+        {/* Cross-Domain Blocked State */}
         {checkInStatus === 'not_eligible' && (
           <div className="text-center space-y-3">
             <div className="w-16 h-16 rounded-2xl bg-status-absent/15 border border-status-absent/30 flex items-center justify-center mx-auto text-status-absent">
-              <XCircle className="h-10 w-10" />
+              <ShieldAlert className="h-10 w-10" />
             </div>
             <div>
               <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-status-absent/15 text-status-absent uppercase tracking-wider">
-                Domain Mismatch
+                Cross-Domain Blocked
               </span>
-              <h2 className="text-xl font-extrabold text-white mt-1">Not Eligible For This Session</h2>
+              <h2 className="text-xl font-extrabold text-white mt-1">Domain Restriction</h2>
+              <p className="text-xs text-gray-300 mt-2 bg-dark-bg p-3 rounded-xl border border-dark-border text-left leading-relaxed">
+                {statusMessage}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Time-Locked State */}
+        {checkInStatus === 'time_locked' && (
+          <div className="text-center space-y-3">
+            <div className="w-16 h-16 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center mx-auto text-amber-400">
+              <Clock className="h-10 w-10 animate-pulse" />
+            </div>
+            <div>
+              <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 uppercase tracking-wider">
+                Meeting Not Started
+              </span>
+              <h2 className="text-xl font-extrabold text-white mt-1">Check-In Opens at Meeting Time</h2>
               <p className="text-xs text-gray-400 mt-1">{statusMessage}</p>
             </div>
           </div>
         )}
 
+        {/* Manually Locked State */}
         {checkInStatus === 'locked' && (
           <div className="text-center space-y-3">
             <div className="w-16 h-16 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center mx-auto text-amber-400">
@@ -317,6 +375,7 @@ export default function CheckIn() {
           </div>
         )}
 
+        {/* Session Not Found */}
         {checkInStatus === 'session_not_found' && (
           <div className="text-center space-y-3">
             <div className="w-16 h-16 rounded-2xl bg-gray-500/15 border border-gray-500/30 flex items-center justify-center mx-auto text-gray-400">
@@ -339,7 +398,9 @@ export default function CheckIn() {
                 </div>
                 <div>
                   <div className="font-bold text-white">{currentUser.full_name}</div>
-                  <div className="text-[10px] text-gray-500">{currentUser.domain}</div>
+                  <div className="text-[10px] text-gray-500">
+                    Domain: <span className="text-accent-light">{currentMember?.department || currentUser.domain}</span>
+                  </div>
                 </div>
               </div>
               <span className="text-[10px] px-2 py-0.5 rounded bg-dark-card border border-dark-border text-gray-300 font-mono">
@@ -351,7 +412,7 @@ export default function CheckIn() {
               <div className="text-white font-semibold text-sm">{session.name}</div>
               <div className="flex items-center gap-2 text-gray-400">
                 <Building className="h-3.5 w-3.5 text-gray-500" />
-                <span>{session.domain}</span>
+                <span>Host Domain: <strong className="text-white">{session.domain}</strong></span>
               </div>
               <div className="flex items-center gap-2 text-gray-400">
                 <Calendar className="h-3.5 w-3.5 text-gray-500" />
