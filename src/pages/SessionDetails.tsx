@@ -61,9 +61,11 @@ export default function SessionDetails() {
   const session = state.sessions.find((s) => s.id === id);
 
   const rawMoMFromSession = useMemo(() => {
-    if (session?.description && session.description.startsWith('__ECELL_MOM__:')) {
+    if (session?.description && session.description.includes('__ECELL_MOM__:')) {
       try {
-        return JSON.parse(session.description.substring('__ECELL_MOM__:'.length)) as MeetingMinutes;
+        const marker = '__ECELL_MOM__:';
+        const jsonStr = session.description.substring(session.description.indexOf(marker) + marker.length);
+        return JSON.parse(jsonStr) as MeetingMinutes;
       } catch (e) {
         return undefined;
       }
@@ -72,6 +74,21 @@ export default function SessionDetails() {
   }, [session?.description]);
 
   const momDoc = id ? (getSessionMoM(id) || rawMoMFromSession) : undefined;
+
+  const displayDescription = useMemo(() => {
+    if (!session?.description) {
+      return momDoc?.summary || '';
+    }
+    let text = session.description;
+    if (text.includes('__ECELL_MOM__:')) {
+      text = text.split('__ECELL_MOM__:')[0].trim();
+    }
+    // If no prior description was entered, fallback to clean MoM summary or agenda points
+    if (!text && momDoc) {
+      text = momDoc.summary || (momDoc.agenda_discussion?.length ? momDoc.agenda_discussion.join('\n') : '');
+    }
+    return text;
+  }, [session?.description, momDoc]);
 
   const existingRecords = useMemo(() => {
     if (!session) return [];
@@ -300,7 +317,9 @@ export default function SessionDetails() {
       const momPayload = JSON.stringify(newMoM);
       const updatedSession: AttendanceSession = {
         ...session,
-        description: `__ECELL_MOM__:${momPayload}`,
+        description: session.description && session.description.split('__ECELL_MOM__:')[0].trim()
+          ? `${session.description.split('__ECELL_MOM__:')[0].trim()}\n\n__ECELL_MOM__:${momPayload}`
+          : `__ECELL_MOM__:${momPayload}`,
         updated_at: new Date().toISOString(),
       };
 
@@ -461,13 +480,13 @@ export default function SessionDetails() {
           </div>
         </div>
 
-        {session.description && (
+        {displayDescription && (
           <div className="mt-4 pt-4 border-t border-dark-border">
             <span className="text-xs text-gray-500 block mb-1 font-semibold uppercase">
               Agenda & Scope
             </span>
-            <p className="text-sm text-gray-300 leading-relaxed bg-dark-bg p-3 rounded-lg border border-dark-border">
-              {session.description}
+            <p className="text-sm text-gray-300 leading-relaxed bg-dark-bg p-3 rounded-lg border border-dark-border whitespace-pre-line">
+              {displayDescription}
             </p>
           </div>
         )}

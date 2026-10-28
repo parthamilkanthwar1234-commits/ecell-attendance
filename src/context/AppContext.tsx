@@ -506,9 +506,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         // Extract cloud-synced MoM documents attached to sessions
         const cloudMoMs: MeetingMinutes[] = [];
         sessRes.data.forEach((sess: any) => {
-          if (sess.description && sess.description.startsWith('__ECELL_MOM__:')) {
+          if (sess.description && sess.description.includes('__ECELL_MOM__:')) {
             try {
-              const parsed = JSON.parse(sess.description.substring('__ECELL_MOM__:'.length));
+              const marker = '__ECELL_MOM__:';
+              const jsonStr = sess.description.substring(sess.description.indexOf(marker) + marker.length);
+              const parsed = JSON.parse(jsonStr);
               cloudMoMs.push(parsed);
             } catch (e) {
               console.warn('Could not parse cloud MoM:', e);

@@ -158,7 +158,7 @@ export default function MeetingsEvents() {
       start_time: s.start_time,
       end_time: s.end_time,
       location: s.location,
-      description: s.description,
+      description: s.description && s.description.includes('__ECELL_MOM__:') ? s.description.split('__ECELL_MOM__:')[0].trim() : (s.description || ''),
       status: s.status,
     });
     setIsFormOpen(true);
@@ -188,9 +188,16 @@ export default function MeetingsEvents() {
     }
 
     if (editingSession) {
+      let combinedDesc = formData.description;
+      if (editingSession.description && editingSession.description.includes('__ECELL_MOM__:')) {
+        const marker = '__ECELL_MOM__:';
+        const momPart = editingSession.description.substring(editingSession.description.indexOf(marker));
+        combinedDesc = formData.description.trim() ? `${formData.description.trim()}\n\n${momPart}` : momPart;
+      }
       const updated: AttendanceSession = {
         ...editingSession,
         ...formData,
+        description: combinedDesc,
         updated_at: new Date().toISOString(),
       };
       dispatch({ type: 'UPDATE_SESSION', payload: updated });
@@ -266,10 +273,14 @@ export default function MeetingsEvents() {
           return false;
         }
 
+        const cleanDesc = s.description && s.description.includes('__ECELL_MOM__:')
+          ? s.description.split('__ECELL_MOM__:')[0].trim()
+          : (s.description || '');
+
         const matchesSearch =
           s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
           s.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          s.description.toLowerCase().includes(searchTerm.toLowerCase());
+          cleanDesc.toLowerCase().includes(searchTerm.toLowerCase());
 
         const matchesDomain = selectedDomain === 'ALL' || s.domain === selectedDomain;
         const matchesType = selectedType === 'ALL' || s.session_type === selectedType;
