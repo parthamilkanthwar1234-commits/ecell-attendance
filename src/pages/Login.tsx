@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   KeyRound,
   User,
@@ -17,6 +17,8 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 export default function Login() {
   const { state, dispatch, addToast, syncFromCloud } = useApp();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const redirectUrl = searchParams.get('redirect');
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -177,6 +179,11 @@ export default function Login() {
       title: 'Authenticated',
       message: `Welcome, ${account.full_name} (${account.role.replace('_', ' ').toUpperCase()}).`,
     });
+
+    if (redirectUrl) {
+      navigate(redirectUrl);
+      return;
+    }
 
     // General Secretary & President both redirect to Leadership Overview
     if (account.role === 'president' || account.role === 'general_secretary') {

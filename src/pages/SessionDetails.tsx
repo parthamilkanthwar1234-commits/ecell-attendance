@@ -23,6 +23,8 @@ import {
   AlertCircle,
   FileSpreadsheet,
   Trash2,
+  QrCode,
+  Smartphone,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import {
@@ -36,6 +38,7 @@ import {
 import { formatDate, getStatusBgColor, getStatusLabel, exportToCSV } from '../lib/utils';
 import { MoMViewer } from '../components/mom/MoMViewer';
 import { MoMEditorModal } from '../components/mom/MoMEditorModal';
+import { SessionQRModal } from '../components/qr/SessionQRModal';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import Modal from '../components/ui/Modal';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
@@ -144,10 +147,17 @@ export default function SessionDetails() {
   // Automatically fetch latest cloud attendance records on mount
   useEffect(() => {
     syncFromCloud();
+    const pollInterval = setInterval(() => {
+      if (!isDirty) {
+        syncFromCloud();
+      }
+    }, 5000);
+    return () => clearInterval(pollInterval);
   }, [syncFromCloud]);
 
   // Modals
   const [isMoMModalOpen, setIsMoMModalOpen] = useState(false);
+  const [isQRModalOpen, setIsQRModalOpen] = useState(false);
   const [isConfirmSaveOpen, setIsConfirmSaveOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [auditReason, setAuditReason] = useState('');
@@ -433,6 +443,17 @@ export default function SessionDetails() {
             </button>
           )}
 
+          {userCanManage && (
+            <button
+              onClick={() => setIsQRModalOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-500/20 transition-all cursor-pointer"
+              title="Project Live Attendance QR Code for Meeting"
+            >
+              <QrCode className="h-4 w-4" />
+              <span>Live Meeting QR</span>
+            </button>
+          )}
+
           {userCanUploadMoM && (
             <button
               onClick={() => setIsMoMModalOpen(true)}
@@ -551,6 +572,17 @@ export default function SessionDetails() {
             </button>
 
             {userCanManage && (
+              <button
+                onClick={() => setIsQRModalOpen(true)}
+                className="px-2.5 py-1.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 text-xs font-semibold cursor-pointer border border-indigo-500/30 inline-flex items-center gap-1.5"
+                title="Open Live Attendance QR code for attendees to scan"
+              >
+                <QrCode className="h-3.5 w-3.5" />
+                <span>Project QR</span>
+              </button>
+            )}
+
+            {userCanManage && (
               <>
                 <button
                   onClick={() => handleBulkSet('present')}
@@ -635,7 +667,15 @@ export default function SessionDetails() {
                     <tr key={member.id} className="hover:bg-dark-hover/40 transition-colors">
                       <td className="p-3 text-center text-gray-500 font-medium">{index + 1}</td>
                       <td className="p-3 font-semibold text-white">
-                        <div>{member.name}</div>
+                        <div className="flex items-center gap-2">
+                          <span>{member.name}</span>
+                          {currentRemarks.toLowerCase().includes('qr') && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1" title="Verified via Live Meeting QR Scan">
+                              <QrCode className="h-2.5 w-2.5" />
+                              <span>QR Check-in</span>
+                            </span>
+                          )}
+                        </div>
                         <div className="text-[10px] text-gray-500">{member.member_id} · {member.role}</div>
                       </td>
                       <td className="p-3 text-gray-400">{member.department}</td>
@@ -893,6 +933,13 @@ export default function SessionDetails() {
         session={session}
         existingMoM={momDoc}
         onSave={handleSaveMoMDocument}
+      />
+
+      {/* Session Attendance QR Code Modal */}
+      <SessionQRModal
+        isOpen={isQRModalOpen}
+        onClose={() => setIsQRModalOpen(false)}
+        session={session}
       />
 
       {/* Delete Session Confirmation Dialog */}

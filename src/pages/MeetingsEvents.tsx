@@ -16,7 +16,8 @@ import {
   List,
   Filter,
   Users,
-  FileSpreadsheet
+  FileSpreadsheet,
+  QrCode,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { AttendanceSession, SessionType, ECellDomain, SessionStatus } from '../types';
@@ -24,6 +25,7 @@ import { formatDate, generateId, getStatusBgColor, getStatusLabel } from '../lib
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import Modal from '../components/ui/Modal';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
+import { SessionQRModal } from '../components/qr/SessionQRModal';
 
 const DOMAIN_OPTIONS: ECellDomain[] = [
   'Event Production & Curation',
@@ -81,6 +83,7 @@ export default function MeetingsEvents() {
   const [editingSession, setEditingSession] = useState<AttendanceSession | null>(null);
   const [sessionToDelete, setSessionToDelete] = useState<AttendanceSession | null>(null);
   const [selectedAttendanceSession, setSelectedAttendanceSession] = useState<AttendanceSession | null>(null);
+  const [qrSession, setQrSession] = useState<AttendanceSession | null>(null);
 
   // Automatically refresh latest sessions and attendance from Supabase Cloud on mount
   useEffect(() => {
@@ -468,6 +471,17 @@ export default function MeetingsEvents() {
                           </button>
                         )}
 
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setQrSession(session);
+                          }}
+                          className="p-1 rounded text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 transition-colors"
+                          title="Show Meeting Attendance QR"
+                        >
+                          <QrCode className="h-3.5 w-3.5" />
+                        </button>
+
                         {canDeleteSession(session) && (
                           <button
                             onClick={(e) => {
@@ -638,6 +652,16 @@ export default function MeetingsEvents() {
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
                           )}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setQrSession(session);
+                            }}
+                            className="p-1 rounded text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 transition-colors"
+                            title="Show Live Meeting QR Code"
+                          >
+                            <QrCode className="h-3.5 w-3.5" />
+                          </button>
                           <span className="inline-flex items-center text-accent-light font-semibold">
                             <span>Details</span>
                             <ChevronRight className="h-3.5 w-3.5 ml-1" />
@@ -891,6 +915,14 @@ export default function MeetingsEvents() {
             </div>
           </div>
         </Modal>
+      )}
+      {/* Session Attendance QR Code Modal */}
+      {qrSession && (
+        <SessionQRModal
+          isOpen={!!qrSession}
+          onClose={() => setQrSession(null)}
+          session={qrSession}
+        />
       )}
     </div>
   );

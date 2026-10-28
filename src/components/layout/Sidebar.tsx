@@ -13,6 +13,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Layers,
+  QrCode,
   X
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -46,6 +47,7 @@ export default function Sidebar() {
       items.push({ label: 'Leadership Overview', path: '/leadership', icon: Crown });
       items.push({ label: 'Meetings & Events', path: '/sessions', icon: Calendar });
       items.push({ label: 'Mark Attendance', path: '/attendance/mark', icon: ClipboardCheck });
+      items.push({ label: 'Scan QR Check-In', path: '/scan', icon: QrCode });
       items.push({ label: 'Team Members', path: '/members', icon: Users });
       items.push({ label: 'Attendance History', path: '/attendance/history', icon: History });
       items.push({ label: 'Analytics & Reports', path: '/analytics', icon: BarChart3 });
@@ -64,12 +66,14 @@ export default function Sidebar() {
       items.push({ label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard });
       items.push({ label: 'Meetings & Events', path: '/sessions', icon: Calendar });
       items.push({ label: 'Mark Attendance', path: '/attendance/mark', icon: ClipboardCheck });
+      items.push({ label: 'Scan QR Check-In', path: '/scan', icon: QrCode });
       items.push({ label: 'Team Members', path: '/members', icon: Users });
       items.push({ label: 'Attendance History', path: '/attendance/history', icon: History });
       items.push({ label: 'Analytics & Reports', path: '/analytics', icon: BarChart3 });
     } else {
       // Member
       items.push({ label: 'My Domain', path: '/my-domain', icon: Layers });
+      items.push({ label: 'Scan Meeting QR', path: '/scan', icon: QrCode });
       items.push({ label: 'Meetings & Events', path: '/sessions', icon: Calendar });
       items.push({ label: 'Attendance History', path: '/attendance/history', icon: History });
     }

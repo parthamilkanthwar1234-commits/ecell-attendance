@@ -17,6 +17,7 @@ import {
   Layers,
   ArrowRight,
   RefreshCw,
+  QrCode,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import {
@@ -31,6 +32,7 @@ import { formatDate, generateId, getStatusBgColor, getStatusLabel } from '../lib
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import Modal from '../components/ui/Modal';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
+import { SessionQRModal } from '../components/qr/SessionQRModal';
 
 const DOMAIN_OPTIONS: ECellDomain[] = [
   'Event Production & Curation',
@@ -100,6 +102,7 @@ export default function MarkAttendance() {
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [auditReason, setAuditReason] = useState('');
   const [isNewSessionModalOpen, setIsNewSessionModalOpen] = useState(false);
+  const [isQRModalOpen, setIsQRModalOpen] = useState(false);
 
   // New session modal form state
   const defaultDomain: ECellDomain =
@@ -422,6 +425,16 @@ export default function MarkAttendance() {
                 <span>Session Details & MoM</span>
                 <ArrowRight className="h-3 w-3" />
               </button>
+
+              <button
+                type="button"
+                onClick={() => setIsQRModalOpen(true)}
+                className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-bold flex items-center gap-1.5 cursor-pointer shadow-sm text-xs"
+                title="Project Live Attendance QR Code"
+              >
+                <QrCode className="h-3.5 w-3.5" />
+                <span>Show Meeting QR</span>
+              </button>
             </div>
           )}
         </div>
@@ -525,7 +538,15 @@ export default function MarkAttendance() {
                             {member.name.charAt(0)}
                           </div>
                           <div>
-                            <div className="font-semibold text-white">{member.name}</div>
+                            <div className="font-semibold text-white flex items-center gap-2">
+                              <span>{member.name}</span>
+                              {attendanceMap[member.id]?.remarks?.toLowerCase().includes('qr') && (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1" title="Marked via Meeting QR Scan">
+                                  <QrCode className="h-2.5 w-2.5" />
+                                  <span>QR Check-in</span>
+                                </span>
+                              )}
+                            </div>
                             <div className="text-xs text-gray-500">
                               {member.member_id} · {member.role}
                             </div>
@@ -802,6 +823,15 @@ export default function MarkAttendance() {
           </div>
         </form>
       </Modal>
+
+      {/* Session Attendance QR Code Modal */}
+      {currentSession && (
+        <SessionQRModal
+          isOpen={isQRModalOpen}
+          onClose={() => setIsQRModalOpen(false)}
+          session={currentSession}
+        />
+      )}
     </div>
   );
 }

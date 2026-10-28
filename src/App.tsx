@@ -14,6 +14,8 @@ import AttendanceHistory from './pages/AttendanceHistory';
 import AnalyticsReports from './pages/AnalyticsReports';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
+import CheckIn from './pages/CheckIn';
+import ScanQR from './pages/ScanQR';
 
 function AuthRouteGate({ children }: { children: React.ReactNode }) {
   const { state } = useApp();
@@ -29,6 +31,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/checkin" element={<CheckIn />} />
 
           {/* Main App Layout */}
           <Route
@@ -41,6 +44,7 @@ export default function App() {
           >
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
+            <Route path="scan" element={<ScanQR />} />
             <Route path="leadership" element={<LeadershipOverview />} />
             <Route path="my-domain" element={<MyDomain />} />
             <Route path="members" element={<TeamMembers />} />
