@@ -54,7 +54,7 @@ export const SessionQRModal: React.FC<SessionQRModalProps> = ({
   onClose,
   session,
 }) => {
-  const { state, syncFromCloud, addToast, isMasterAdmin } = useApp();
+  const { state, syncFromCloud, addToast, isMasterAdmin, canManageSession } = useApp();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
@@ -412,6 +412,28 @@ export const SessionQRModal: React.FC<SessionQRModalProps> = ({
           {content}
         </div>
       </div>
+    );
+  }
+
+  // Security Gate: strictly only Leads, Co-Leads, and Master Admins of this domain can project QR
+  const isAuthorizedLead = canManageSession(session);
+  if (!isAuthorizedLead) {
+    return (
+      <Modal isOpen={isOpen} onClose={onClose} title="Access Restricted" size="sm">
+        <div className="p-6 text-center space-y-3">
+          <ShieldAlert className="h-10 w-10 text-red-400 mx-auto" />
+          <h3 className="text-sm font-bold text-white">Lead Authorization Required</h3>
+          <p className="text-xs text-gray-400 leading-relaxed">
+            Only Domain Leads, Co-Leads, and Master Admins of <strong>{session.domain}</strong> are authorized to project and display live meeting QR codes.
+          </p>
+          <button
+            onClick={onClose}
+            className="mt-2 px-4 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs font-semibold text-gray-300 hover:text-white cursor-pointer"
+          >
+            Close
+          </button>
+        </div>
+      </Modal>
     );
   }
 

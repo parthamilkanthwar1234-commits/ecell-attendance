@@ -471,16 +471,18 @@ export default function MeetingsEvents() {
                           </button>
                         )}
 
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setQrSession(session);
-                          }}
-                          className="p-1 rounded text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 transition-colors"
-                          title="Show Meeting Attendance QR"
-                        >
-                          <QrCode className="h-3.5 w-3.5" />
-                        </button>
+                        {userCanManage && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setQrSession(session);
+                            }}
+                            className="p-1 rounded text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 transition-colors"
+                            title="Show Meeting Attendance QR (Leads Only)"
+                          >
+                            <QrCode className="h-3.5 w-3.5" />
+                          </button>
+                        )}
 
                         {canDeleteSession(session) && (
                           <button
@@ -565,6 +567,7 @@ export default function MeetingsEvents() {
                 {filteredSessions.map((session) => {
                   const mom = getSessionMoM(session.id);
                   const stats = getSessionStats(session.id);
+                  const userCanManage = canManageSession(session);
 
                   return (
                     <tr
@@ -652,16 +655,18 @@ export default function MeetingsEvents() {
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
                           )}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setQrSession(session);
-                            }}
-                            className="p-1 rounded text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 transition-colors"
-                            title="Show Live Meeting QR Code"
-                          >
-                            <QrCode className="h-3.5 w-3.5" />
-                          </button>
+                          {userCanManage && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setQrSession(session);
+                              }}
+                              className="p-1 rounded text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 transition-colors"
+                              title="Show Live Meeting QR Code (Leads Only)"
+                            >
+                              <QrCode className="h-3.5 w-3.5" />
+                            </button>
+                          )}
                           <span className="inline-flex items-center text-accent-light font-semibold">
                             <span>Details</span>
                             <ChevronRight className="h-3.5 w-3.5 ml-1" />

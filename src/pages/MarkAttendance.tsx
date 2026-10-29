@@ -426,15 +426,17 @@ export default function MarkAttendance() {
                 <ArrowRight className="h-3 w-3" />
               </button>
 
-              <button
-                type="button"
-                onClick={() => setIsQRModalOpen(true)}
-                className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-bold flex items-center gap-1.5 cursor-pointer shadow-sm text-xs"
-                title="Project Live Attendance QR Code"
-              >
-                <QrCode className="h-3.5 w-3.5" />
-                <span>Show Meeting QR</span>
-              </button>
+              {userCanManage && (
+                <button
+                  type="button"
+                  onClick={() => setIsQRModalOpen(true)}
+                  className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-bold flex items-center gap-1.5 cursor-pointer shadow-sm text-xs"
+                  title="Project Live Attendance QR Code (Leads Only)"
+                >
+                  <QrCode className="h-3.5 w-3.5" />
+                  <span>Show Meeting QR</span>
+                </button>
+              )}
             </div>
           )}
         </div>
