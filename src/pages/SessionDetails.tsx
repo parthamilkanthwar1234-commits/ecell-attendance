@@ -86,6 +86,9 @@ export default function SessionDetails() {
     if (text.includes('__ECELL_MOM__:')) {
       text = text.split('__ECELL_MOM__:')[0].trim();
     }
+    if (text.includes('__ECELL_MOM__')) {
+      text = '';
+    }
     // If no prior description was entered, fallback to clean MoM summary or agenda points
     if (!text && momDoc) {
       text = momDoc.summary || (momDoc.agenda_discussion?.length ? momDoc.agenda_discussion.join('\n') : '');

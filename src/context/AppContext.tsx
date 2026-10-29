@@ -117,6 +117,27 @@ function initializeState(): AppState {
   const auditLogs = loadFromStorage(STORAGE_KEYS.AUDIT_V3, initialAudits);
   const settings = loadFromStorage(STORAGE_KEYS.SETTINGS_V3, initialSettings);
 
+  // Ensure all 7 designated domain MoM scribes are populated even if older cached settings exist
+  const officialDomainScribes: Partial<Record<ECellDomain, string>> = {
+    'Finance Management': 'ovee.pawar',
+    'Public Relations & Marketing': 'harshit.patil',
+    'Event Production & Curation': 'ayush.gosavi',
+    'Technical & Data Management': 'chinmay.gurav',
+    'Content Development': 'aditi.kadam',
+    'Graphics Design': 'akshara.chillarge',
+    'Social Media': 'savani.patki',
+  };
+
+  if (!settings.domain_mom_scribes) {
+    settings.domain_mom_scribes = { ...officialDomainScribes };
+  } else {
+    for (const [dept, scribe] of Object.entries(officialDomainScribes)) {
+      if (!settings.domain_mom_scribes[dept as ECellDomain]) {
+        settings.domain_mom_scribes[dept as ECellDomain] = scribe;
+      }
+    }
+  }
+
   // Ensure Vanshika Thakare and Ayush Deshmukh are upgraded to Master Admin in stored data
   const upgradedAccounts = userAccounts.map((acc) => {
     if (acc.username === 'vanshika.thakare' || acc.username === 'ayush.deshmukh') {
@@ -893,8 +914,50 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      // Guaranteed MoM Scribes designated by user:
-      // 1. Finance Management: Ovee Pawar (ovee.pawar)
+      const uName = (user.username || '').toLowerCase().trim();
+      const fName = (user.full_name || '').toLowerCase().trim();
+      const uId = (user.id || '').toLowerCase().trim();
+
+      if (assignedScribe) {
+        if (uId === assignedScribe.toLowerCase() || `user-${uId}` === assignedScribe.toLowerCase()) {
+          return true;
+        }
+      }
+
+      // Official Domain MoM Scribes designated by leadership:
+
+      // 2. Public Relations & Marketing: Harshit Patil (harshit.patil)
+      // 3. Event Production & Curation: Ayush Gosavi (ayush.gosavi)
+      // 4. Technical & Data Management: Chinmay Gurav (chinmay.gurav)
+      // 5. Content Development: Aditi Kadam (aditi.kadam)
+      // 6. Graphics Design: Akshara Chillarge (akshara.chillarge)
+      // 7. Social Media: Savani Patki (savani.patki)
+      const officialScribeMap: Record<string, { username: string; keywords: string[] }> = {
+        'Finance Management': { username: 'ovee.pawar', keywords: ['ovee', 'pawar'] },
+        'Public Relations & Marketing': { username: 'harshit.patil', keywords: ['harshit', 'patil'] },
+        'Event Production & Curation': { username: 'ayush.gosavi', keywords: ['ayush.gosavi', 'gosavi'] },
+        'Technical & Data Management': { username: 'chinmay.gurav', keywords: ['chinmay', 'gurav'] },
+        'Content Development': { username: 'aditi.kadam', keywords: ['aditi.kadam', 'kadam'] },
+        'Graphics Design': { username: 'akshara.chillarge', keywords: ['akshara', 'chillarge'] },
+        'Social Media': { username: 'savani.patki', keywords: ['savani', 'patki'] },
+      };
+
+      for (const [domainName, scribeInfo] of Object.entries(officialScribeMap)) {
+        const matchesUser =
+          uName === scribeInfo.username ||
+          scribeInfo.keywords.some((kw) => fName.includes(kw));
+
+        if (matchesUser) {
+          if (
+            session.domain === domainName ||
+            session.domain === 'All Domains' ||
+            session.domain === 'General E-Cell / Core Committee'
+          ) {
+            return true;
+          }
+        }
+      }
+
       if (
         (user.username.toLowerCase() === 'ovee.pawar' || user.full_name.toLowerCase().includes('ovee')) &&
         (session.domain === 'Finance Management' || session.domain === 'All Domains')
@@ -917,14 +980,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const isMoMScribe = useCallback(() => {
     if (!user) return false;
+    const uName = (user.username || '').toLowerCase().trim();
+    const fName = (user.full_name || '').toLowerCase().trim();
+
+    const officialScribes = [
+      { username: 'ovee.pawar', keywords: ['ovee', 'pawar'] },
+      { username: 'harshit.patil', keywords: ['harshit', 'patil'] },
+      { username: 'ayush.gosavi', keywords: ['ayush.gosavi', 'gosavi'] },
+      { username: 'chinmay.gurav', keywords: ['chinmay', 'gurav'] },
+      { username: 'aditi.kadam', keywords: ['aditi.kadam', 'kadam'] },
+      { username: 'akshara.chillarge', keywords: ['akshara', 'chillarge'] },
+      { username: 'savani.patki', keywords: ['savani', 'patki'] },
+    ];
+
     if (
-      user.username.toLowerCase() === 'ovee.pawar' ||
-      user.full_name.toLowerCase().includes('ovee') ||
-      user.username.toLowerCase() === 'ayush.gosavi' ||
-      user.full_name.toLowerCase().includes('gosavi')
+      officialScribes.some(
+        (s) => uName === s.username || s.keywords.some((kw) => fName.includes(kw))
+      )
     ) {
       return true;
     }
+    
     const scribes = Object.values(state.settings.domain_mom_scribes || {});
     return scribes.some(
       (s) =>
@@ -948,9 +1024,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (session.domain === 'General E-Cell / Core Committee') return true;
         return user.domain === session.domain;
       }
+      if (canUploadMoM(session)) return true;
       return user.domain === session.domain;
     },
-    [user]
+    [user, canUploadMoM]
   );
 
   const getApplicableMembersForSession = useCallback(

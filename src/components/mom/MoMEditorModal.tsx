@@ -230,7 +230,11 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
       document_name: `${session.name.replace(/[^a-zA-Z0-9]/g, '_')}_Official_MoM.pdf`,
       document_type: 'digital',
       document_size: 'Formal Document',
-      summary: cleanAgenda.length > 0 ? cleanAgenda.join('\n') : (session.description || 'Minutes recorded.'),
+      summary: cleanAgenda.length > 0
+        ? cleanAgenda.join('\n')
+        : (session.description && session.description.includes('__ECELL_MOM__:')
+            ? session.description.split('__ECELL_MOM__:')[0].trim()
+            : session.description) || 'Minutes recorded.',
       notes: cleanUpdates.join('\n'),
 
       // Official Template Fields

@@ -203,7 +203,12 @@ export function generateDefaultSettings(): AppSettings {
     member_login_enabled: true,
     domain_mom_scribes: {
       'Finance Management': 'ovee.pawar',
+      'Public Relations & Marketing': 'harshit.patil',
       'Event Production & Curation': 'ayush.gosavi',
+      'Technical & Data Management': 'chinmay.gurav',
+      'Content Development': 'aditi.kadam',
+      'Graphics Design': 'akshara.chillarge',
+      'Social Media': 'savani.patki',
     },
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
