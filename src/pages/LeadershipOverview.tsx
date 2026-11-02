@@ -26,6 +26,7 @@ const PRIMARY_DOMAINS: ECellDomain[] = [
   'Technical & Data Management',
   'Content Development',
   'Social Media',
+  'Core Leads',
 ];
 
 export default function LeadershipOverview() {

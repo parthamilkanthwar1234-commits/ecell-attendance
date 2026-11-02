@@ -355,7 +355,7 @@ export default function AnalyticsReports() {
         {/* Domain Comparison Bar Chart */}
         <div className="bg-dark-card border border-dark-border rounded-xl p-5">
           <h3 className="text-base font-bold text-white mb-1">Domain-wise Attendance (%)</h3>
-          <p className="text-xs text-gray-400 mb-4">Comparison across the 7 E-Cell domains</p>
+          <p className="text-xs text-gray-400 mb-4">Comparison across E-Cell domains</p>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart

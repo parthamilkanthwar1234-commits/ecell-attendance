@@ -8,6 +8,7 @@ export type ECellDomain =
   | 'Technical & Data Management'
   | 'Content Development'
   | 'Social Media'
+  | 'Core Leads'
   | 'General E-Cell / Core Committee'
   | 'All Domains'
   | 'Unassigned';

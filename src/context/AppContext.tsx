@@ -117,6 +117,18 @@ function initializeState(): AppState {
   const auditLogs = loadFromStorage(STORAGE_KEYS.AUDIT_V3, initialAudits);
   const settings = loadFromStorage(STORAGE_KEYS.SETTINGS_V3, initialSettings);
 
+  // Ensure 'Core Leads' domain is included in settings even if loaded from older localStorage
+  if (settings && settings.departments) {
+    if (!settings.departments.includes('Core Leads')) {
+      const allDomainsIdx = settings.departments.indexOf('All Domains');
+      if (allDomainsIdx !== -1) {
+        settings.departments.splice(allDomainsIdx, 0, 'Core Leads');
+      } else {
+        settings.departments.push('Core Leads');
+      }
+    }
+  }
+
   // Ensure all 7 designated domain MoM scribes are populated even if older cached settings exist
   const officialDomainScribes: Partial<Record<ECellDomain, string>> = {
     'Finance Management': 'ovee.pawar',
