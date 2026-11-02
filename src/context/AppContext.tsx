@@ -863,6 +863,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (user.role === 'lead_admin' || user.role === 'co_lead') {
         if (domain === 'All Domains') return true;
         if (domain === 'General E-Cell / Core Committee') return true;
+        if (domain === 'Core Leads') return true;
         return user.domain === domain;
       }
       return false;
@@ -878,6 +879,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (user.role === 'lead_admin' || user.role === 'co_lead') {
         if (session.domain === 'All Domains') return true;
         if (session.domain === 'General E-Cell / Core Committee') return true;
+        if (session.domain === 'Core Leads') return true;
         return user.domain === session.domain;
       }
       return false;
@@ -912,6 +914,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (user.role === 'lead_admin' || user.role === 'co_lead') {
         if (session.domain === 'All Domains') return true;
         if (session.domain === 'General E-Cell / Core Committee') return true;
+        if (session.domain === 'Core Leads') return true;
         return user.domain === session.domain;
       }
 
@@ -1034,6 +1037,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (session.domain === 'All Domains') return true;
       if (user.role === 'lead_admin' || user.role === 'co_lead') {
         if (session.domain === 'General E-Cell / Core Committee') return true;
+        if (session.domain === 'Core Leads') return true;
         return user.domain === session.domain;
       }
       if (canUploadMoM(session)) return true;
@@ -1047,14 +1051,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (session.domain === 'All Domains') {
         return state.members;
       }
-      if (session.domain === 'General E-Cell / Core Committee') {
+      if (session.domain === 'General E-Cell / Core Committee' || session.domain === 'Core Leads') {
         return state.members.filter(
           (m) =>
             m.role === 'Master Admin' ||
             m.role === 'President' ||
             m.role === 'General Secretary' ||
             m.role === 'Domain Lead' ||
-            m.role === 'Domain Co-Lead'
+            m.role === 'Domain Co-Lead' ||
+            m.department === 'Core Leads'
         );
       }
       // Domain specific: filter members assigned to this domain
@@ -1095,7 +1100,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       if (domainFilter && domainFilter !== 'ALL') {
         const domainMemberIds = new Set(
-          state.members.filter((m) => m.department === domainFilter).map((m) => m.id)
+          state.members
+            .filter((m) =>
+              domainFilter === 'Core Leads'
+                ? m.department === 'Core Leads' ||
+                  m.role === 'Domain Lead' ||
+                  m.role === 'Domain Co-Lead' ||
+                  m.role === 'Master Admin' ||
+                  m.role === 'President' ||
+                  m.role === 'General Secretary'
+                : m.department === domainFilter
+            )
+            .map((m) => m.id)
         );
         filteredRecords = state.records.filter((r) => domainMemberIds.has(r.member_id));
       }

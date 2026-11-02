@@ -180,7 +180,8 @@ export default function MeetingsEvents() {
       if (
         formData.domain !== user.domain &&
         formData.domain !== 'All Domains' &&
-        formData.domain !== 'General E-Cell / Core Committee'
+        formData.domain !== 'General E-Cell / Core Committee' &&
+        formData.domain !== 'Core Leads'
       ) {
         addToast({
           type: 'error',

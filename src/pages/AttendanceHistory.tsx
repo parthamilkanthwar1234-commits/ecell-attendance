@@ -93,10 +93,18 @@ export default function AttendanceHistory() {
         const matchMember = selectedMember === 'ALL' || item.member.id === selectedMember;
 
         // Domain / Department (matches either member's domain or meeting's domain)
+        const isCoreLeadRole =
+          item.member.role === 'Master Admin' ||
+          item.member.role === 'President' ||
+          item.member.role === 'General Secretary' ||
+          item.member.role === 'Domain Lead' ||
+          item.member.role === 'Domain Co-Lead';
+
         const matchDept =
           selectedDept === 'ALL' ||
           item.member.department === selectedDept ||
-          item.session.domain === selectedDept;
+          item.session.domain === selectedDept ||
+          (selectedDept === 'Core Leads' && (isCoreLeadRole || item.member.department === 'Core Leads'));
 
         // Category / Session Type
         const matchCat =

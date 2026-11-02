@@ -439,7 +439,18 @@ export default function TeamMembers() {
           m.member_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
           m.email.toLowerCase().includes(searchTerm.toLowerCase());
 
-        const matchesDept = selectedDept === 'ALL' || m.department === selectedDept;
+        const isCoreLeadRole =
+          m.role === 'Domain Lead' ||
+          m.role === 'Domain Co-Lead' ||
+          m.role === 'Master Admin' ||
+          m.role === 'President' ||
+          m.role === 'General Secretary' ||
+          m.department === 'Core Leads';
+
+        const matchesDept =
+          selectedDept === 'ALL' ||
+          m.department === selectedDept ||
+          (selectedDept === 'Core Leads' && isCoreLeadRole);
         const matchesRole = selectedRole === 'ALL' || m.role === selectedRole;
 
         return matchesSearch && matchesDept && matchesRole;

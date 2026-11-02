@@ -43,7 +43,8 @@ export default function MyDomain() {
         (s) =>
           s.domain === userDomain ||
           s.domain === 'All Domains' ||
-          s.domain === 'General E-Cell / Core Committee'
+          s.domain === 'General E-Cell / Core Committee' ||
+          (user?.role !== 'member' && s.domain === 'Core Leads')
       )
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [state.sessions, userDomain]);

@@ -76,7 +76,18 @@ export default function LeadershipOverview() {
 
       // Attendance records for members in this domain
       const domainMemberIds = new Set(
-        members.filter((m) => m.department === domain).map((m) => m.id)
+        members
+          .filter((m) =>
+            domain === 'Core Leads'
+              ? m.department === 'Core Leads' ||
+                m.role === 'Domain Lead' ||
+                m.role === 'Domain Co-Lead' ||
+                m.role === 'Master Admin' ||
+                m.role === 'President' ||
+                m.role === 'General Secretary'
+              : m.department === domain
+          )
+          .map((m) => m.id)
       );
 
       const domainRecords = records.filter(

@@ -152,8 +152,19 @@ export default function CheckIn() {
 
       // 2. Strict Domain Check
       // Other domains members CANNOT scan the QR of another domain. Only Master Admins, President, and GS can do that.
+      const isCoreLeadRole =
+        currentUser.role === 'lead_admin' ||
+        currentUser.role === 'co_lead' ||
+        currentUser.role === 'master_admin' ||
+        currentUser.role === 'president' ||
+        currentUser.role === 'general_secretary' ||
+        currentMember?.role === 'Domain Lead' ||
+        currentMember?.role === 'Domain Co-Lead';
+
       const isAllDomainsSession =
-        session.domain === 'All Domains' || session.domain === 'General E-Cell / Core Committee';
+        session.domain === 'All Domains' ||
+        session.domain === 'General E-Cell / Core Committee' ||
+        (session.domain === 'Core Leads' && (isCoreLeadRole || memberDomain === 'Core Leads'));
 
       const isDomainAuthorized = isAllDomainsSession || isExecutiveOrMaster || memberDomain === session.domain;
 

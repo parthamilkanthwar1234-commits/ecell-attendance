@@ -446,7 +446,17 @@ export default function Settings() {
               .filter((d) => d !== 'All Domains' && d !== 'Unassigned')
               .map((dept) => {
                 const currentScribe = formData.domain_mom_scribes?.[dept] || '';
-                const domainMembers = state.members.filter((m) => m.department === dept);
+                const isCoreLeadRole =
+                  (m) =>
+                    m.role === 'Domain Lead' ||
+                    m.role === 'Domain Co-Lead' ||
+                    m.role === 'Master Admin' ||
+                    m.role === 'President' ||
+                    m.role === 'General Secretary' ||
+                    m.department === 'Core Leads';
+                const domainMembers = state.members.filter((m) =>
+                  dept === 'Core Leads' ? isCoreLeadRole(m) : m.department === dept
+                );
 
                 return (
                   <div key={dept} className="p-3 bg-dark-bg border border-dark-border rounded-lg space-y-2">
