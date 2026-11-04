@@ -140,8 +140,9 @@ export default function CheckIn() {
         currentUser.role === 'general_secretary';
 
       // 1. Time Window Check (must have reached scheduled start time, unless executive/master admin)
+      const isRandomMeeting = session.session_type === 'Random Meeting' || !!session.is_random_meeting;
       const sessionStart = parseSessionDateTime(session.date, session.start_time);
-      if (sessionStart && new Date() < sessionStart && !isExecutiveOrMaster) {
+      if (sessionStart && new Date() < sessionStart && !isExecutiveOrMaster && !isRandomMeeting) {
         setCheckInStatus('time_locked');
         setStatusMessage(
           `Meeting attendance is not yet active. This meeting is scheduled for ${session.date} starting at ${session.start_time}. Check-in will open when the meeting begins.`
@@ -164,6 +165,7 @@ export default function CheckIn() {
       const isAllDomainsSession =
         session.domain === 'All Domains' ||
         session.domain === 'General E-Cell / Core Committee' ||
+        isRandomMeeting ||
         (session.domain === 'Core Leads' && (isCoreLeadRole || memberDomain === 'Core Leads'));
 
       const isDomainAuthorized = isAllDomainsSession || isExecutiveOrMaster || memberDomain === session.domain;
@@ -196,7 +198,7 @@ export default function CheckIn() {
         session_id: session.id,
         member_id: memberId,
         status: 'present',
-        remarks: 'Self-checkin via Meeting QR',
+        remarks: isRandomMeeting ? 'Self-checkin via Random Meeting QR ⚡' : 'Self-checkin via Meeting QR',
         marked_by: currentUser.username || currentUser.email || 'qr-self',
         marked_by_name: currentUser.full_name || 'Self Check-in',
         created_at: new Date().toISOString(),

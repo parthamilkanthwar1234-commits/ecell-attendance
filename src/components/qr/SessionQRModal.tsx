@@ -82,7 +82,8 @@ export const SessionQRModal: React.FC<SessionQRModalProps> = ({
   }, [currentTime, sessionStartTime]);
 
   // QR is active if meeting time has arrived OR if admin has force unlocked
-  const isQRActive = !isBeforeMeetingTime || adminForceUnlock || isMasterAdmin();
+  const isRandomMeeting = session.session_type === 'Random Meeting' || !!session.is_random_meeting;
+  const isQRActive = isRandomMeeting || !isBeforeMeetingTime || adminForceUnlock || isMasterAdmin();
 
   // Generate Direct Check-In URL
   const checkinUrl = useMemo(() => {
@@ -199,8 +200,8 @@ export const SessionQRModal: React.FC<SessionQRModalProps> = ({
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-accent-primary/20 text-accent-light border border-accent-primary/30">
               {session.domain}
             </span>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-300">
-              {session.session_type}
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">
+              {isRandomMeeting ? '⚡ Random Meeting' : session.session_type}
             </span>
           </div>
           <h3 className="text-base font-bold text-white tracking-tight">{session.name}</h3>

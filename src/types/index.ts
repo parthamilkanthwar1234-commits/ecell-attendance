@@ -25,6 +25,7 @@ export type SessionType =
   | 'E-Summit Meeting'
   | 'Sponsorship Meeting'
   | 'Workshop'
+  | 'Random Meeting'
   | 'Other';
 
 export type SessionStatus = 'Scheduled' | 'In Progress' | 'Completed' | 'Cancelled';
@@ -109,6 +110,7 @@ export interface AttendanceSession {
   updated_at: string;
   completed_at?: string;
   category?: string;
+  is_random_meeting?: boolean;
 }
 
 export interface AttendanceRecord {

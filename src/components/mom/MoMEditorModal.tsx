@@ -44,7 +44,8 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
   const [preparedBy, setPreparedBy] = useState(existingMoM?.prepared_by || user?.full_name || 'Domain Scribe');
 
   const [attendancePresent, setAttendancePresent] = useState(existingMoM?.attendance_present || '');
-  const [attendanceAbsent, setAttendanceAbsent] = useState(existingMoM?.attendance_absent || '');
+  const isRandomMeeting = session.session_type === 'Random Meeting' || !!session.is_random_meeting;
+  const [attendanceAbsent, setAttendanceAbsent] = useState(existingMoM?.attendance_absent || (isRandomMeeting ? 'None (Random Meeting / Open QR Attendance)' : ''));
 
   const [agendaDiscussion, setAgendaDiscussion] = useState<string[]>(
     existingMoM?.agenda_discussion && existingMoM.agenda_discussion.length > 0

@@ -18,6 +18,7 @@ import {
   ArrowRight,
   RefreshCw,
   QrCode,
+  Zap,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import {
@@ -55,6 +56,7 @@ const SESSION_TYPES: SessionType[] = [
   'E-Summit Meeting',
   'Sponsorship Meeting',
   'Workshop',
+  'Random Meeting',
   'Other',
 ];
 
@@ -134,17 +136,48 @@ export default function MarkAttendance() {
     return sessions.find((s) => s.id === selectedSessionId);
   }, [sessions, selectedSessionId]);
 
-  // Applicable members for current session
-  const applicableMembers = useMemo(() => {
-    if (!currentSession) return [];
-    return getApplicableMembersForSession(currentSession);
-  }, [currentSession, getApplicableMembersForSession]);
+  const isRandomMeeting = currentSession?.session_type === 'Random Meeting' || !!currentSession?.is_random_meeting;
+  const [manualAttendees, setManualAttendees] = useState<string[]>([]);
+  const [selectedMemberToAdd, setSelectedMemberToAdd] = useState('');
 
   // Existing records for this session
   const existingSessionRecords = useMemo(() => {
     if (!selectedSessionId) return [];
     return records.filter((r) => r.session_id === selectedSessionId);
   }, [records, selectedSessionId]);
+
+  // Applicable members for current session
+  const applicableMembers = useMemo(() => {
+    if (!currentSession) return [];
+    if (isRandomMeeting) {
+      const recordMemberIds = new Set(existingSessionRecords.map((r) => r.member_id));
+      const scannedMembers = state.members.filter((m) => recordMemberIds.has(m.id));
+      const manualAdded = state.members.filter(
+        (m) => manualAttendees.includes(m.id) && !recordMemberIds.has(m.id)
+      );
+      return [...scannedMembers, ...manualAdded];
+    }
+    return getApplicableMembersForSession(currentSession);
+  }, [currentSession, isRandomMeeting, existingSessionRecords, state.members, manualAttendees, getApplicableMembersForSession]);
+
+  const handleAddManualAttendee = (memberId: string) => {
+    if (!memberId) return;
+    if (!manualAttendees.includes(memberId)) {
+      setManualAttendees((prev) => [...prev, memberId]);
+      setAttendanceMap((prev) => ({
+        ...prev,
+        [memberId]: { status: 'present', remarks: 'Manually marked (In-person check-in)' },
+      }));
+      setIsDirty(true);
+      setSelectedMemberToAdd('');
+      const m = state.members.find((x) => x.id === memberId);
+      addToast({
+        type: 'success',
+        title: 'Attendee Added',
+        message: `${m?.name || 'Member'} added to attendee list. Click Save Changes to commit.`,
+      });
+    }
+  };
 
   const hasExistingRecords = existingSessionRecords.length > 0;
   const userCanManage = currentSession ? canManageSession(currentSession) : false;
@@ -211,6 +244,14 @@ export default function MarkAttendance() {
 
   const handleMarkAll = (status: AttendanceStatus) => {
     if (!userCanManage) return;
+    if (isRandomMeeting && status === 'absent') {
+      addToast({
+        type: 'info',
+        title: 'Random Meeting Rule',
+        message: 'Members cannot be marked absent in a Random Meeting. Only attendees are recorded.',
+      });
+      return;
+    }
     setIsDirty(true);
     const updated: Record<string, { status: AttendanceStatus; remarks: string }> = {};
     applicableMembers.forEach((m) => {
@@ -415,6 +456,12 @@ export default function MarkAttendance() {
               <span className="px-3 py-1.5 rounded-lg bg-accent-primary/10 text-accent-light border border-accent-primary/20 font-bold">
                 {currentSession.domain}
               </span>
+              {isRandomMeeting && (
+                <span className="px-2.5 py-1 rounded-lg bg-purple-500/20 text-purple-300 border border-purple-500/30 font-bold flex items-center gap-1">
+                  <Zap className="h-3 w-3 text-purple-400" />
+                  <span>Random Meeting</span>
+                </span>
+              )}
               <span className="px-3 py-1.5 rounded-lg bg-dark-bg border border-dark-border text-gray-300 flex items-center gap-1.5">
                 <Calendar className="h-3.5 w-3.5 text-accent-light" />
                 {formatDate(currentSession.date)} ({currentSession.start_time})
@@ -462,6 +509,43 @@ export default function MarkAttendance() {
         )}
       </div>
 
+      {isRandomMeeting && (
+        <div className="p-3 bg-purple-500/15 border border-purple-500/30 rounded-xl text-purple-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Zap className="h-4 w-4 text-purple-400 flex-shrink-0" />
+            <span>
+              <strong>Random Meeting Mode:</strong> Only members who scanned the QR code (or were added manually) are recorded as attendees. Zero absentees are marked; non-attendees suffer no negative attendance impact.
+            </span>
+          </div>
+          {userCanManage && (
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <select
+                value={selectedMemberToAdd}
+                onChange={(e) => setSelectedMemberToAdd(e.target.value)}
+                className="px-2.5 py-1.5 bg-dark-bg border border-purple-500/30 rounded-lg text-xs text-white focus:outline-none focus:border-purple-400 cursor-pointer max-w-[200px]"
+              >
+                <option value="">+ Add in-person attendee...</option>
+                {state.members
+                  .filter((m) => !applicableMembers.some((a) => a.id === m.id))
+                  .map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} ({m.department})
+                    </option>
+                  ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => handleAddManualAttendee(selectedMemberToAdd)}
+                disabled={!selectedMemberToAdd}
+                className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white font-bold text-xs rounded-lg cursor-pointer transition-colors"
+              >
+                Add
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Live Stats Bar & Quick Actions */}
       <div className="bg-dark-card border border-dark-border rounded-xl p-4 flex flex-col lg:flex-row items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
@@ -494,12 +578,14 @@ export default function MarkAttendance() {
             >
               Mark All Present
             </button>
-            <button
-              onClick={() => handleMarkAll('absent')}
-              className="px-3 py-1.5 rounded-lg bg-status-absent/15 hover:bg-status-absent/25 text-status-absent border border-status-absent/30 text-xs font-medium cursor-pointer"
-            >
-              Mark All Absent
-            </button>
+            {!isRandomMeeting && (
+              <button
+                onClick={() => handleMarkAll('absent')}
+                className="px-3 py-1.5 rounded-lg bg-status-absent/15 hover:bg-status-absent/25 text-status-absent border border-status-absent/30 text-xs font-medium cursor-pointer"
+              >
+                Mark All Absent
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -521,7 +607,17 @@ export default function MarkAttendance() {
               {applicableMembers.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="p-8 text-center text-gray-500">
-                    No members assigned to {currentSession?.domain}.
+                    {isRandomMeeting ? (
+                      <div className="space-y-2 py-4">
+                        <Zap className="h-8 w-8 text-purple-400 mx-auto" />
+                        <div className="font-semibold text-white">No attendees checked in yet</div>
+                        <div className="text-xs text-gray-400 max-w-sm mx-auto">
+                          Click "Show Meeting QR" to project the live QR code for members to scan, or add attendees manually using the dropdown above.
+                        </div>
+                      </div>
+                    ) : (
+                      `No members assigned to ${currentSession?.domain}.`
+                    )}
                   </td>
                 </tr>
               ) : (
@@ -677,7 +773,9 @@ export default function MarkAttendance() {
       >
         <div className="space-y-4">
           <p className="text-xs text-gray-300">
-            Save attendance for "{currentSession?.name}"? {stats.present} present, {stats.late} late, {stats.absent} absent, {stats.excused} excused.
+            {isRandomMeeting
+              ? `Save attendance for ${currentSession?.name}? ${stats.present + stats.late} attendees checked in. Non-attendees will NOT be marked absent.`
+              : `Save attendance for "${currentSession?.name}"? ${stats.present} present, ${stats.late} late, ${stats.absent} absent, ${stats.excused} excused.`}
           </p>
           <div>
             <label className="block text-xs font-semibold text-gray-400 mb-1">

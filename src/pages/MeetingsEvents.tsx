@@ -18,6 +18,7 @@ import {
   Users,
   FileSpreadsheet,
   QrCode,
+  Zap,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { AttendanceSession, SessionType, ECellDomain, SessionStatus } from '../types';
@@ -48,6 +49,7 @@ const SESSION_TYPES: SessionType[] = [
   'E-Summit Meeting',
   'Sponsorship Meeting',
   'Workshop',
+  'Random Meeting',
   'Other',
 ];
 
@@ -84,7 +86,95 @@ export default function MeetingsEvents() {
   const [editingSession, setEditingSession] = useState<AttendanceSession | null>(null);
   const [sessionToDelete, setSessionToDelete] = useState<AttendanceSession | null>(null);
   const [selectedAttendanceSession, setSelectedAttendanceSession] = useState<AttendanceSession | null>(null);
+  // Form State
+  const defaultDomain: ECellDomain =
+    user?.role === 'master_admin' || user?.role === 'president'
+      ? 'All Domains'
+      : (user?.domain as ECellDomain) || 'Event Production & Curation';
+
   const [qrSession, setQrSession] = useState<AttendanceSession | null>(null);
+  const [isRandomModalOpen, setIsRandomModalOpen] = useState(false);
+  const [randomMeetingData, setRandomMeetingData] = useState({
+    name: '',
+    domain: defaultDomain,
+    location: 'E-Cell Cabin / Campus',
+  });
+
+  const handleOpenRandomModal = () => {
+    if (!canCreateSession()) {
+      addToast({
+        type: 'error',
+        title: 'Access Restricted',
+        message: 'Only Core Committee Leads and Admins can schedule sessions.',
+      });
+      return;
+    }
+    const now = new Date();
+    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    setRandomMeetingData({
+      name: `Ad-hoc Sync (${timeStr})`,
+      domain: user?.role === 'master_admin' || user?.role === 'president' ? 'All Domains' : (user?.domain as ECellDomain) || 'All Domains',
+      location: 'E-Cell Cabin / Campus',
+    });
+    setIsRandomModalOpen(true);
+  };
+
+  const handleCreateRandomMeeting = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const now = new Date();
+    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const endTime = new Date(now.getTime() + 60 * 60 * 1000);
+    const endTimeStr = `${String(endTime.getHours()).padStart(2, '0')}:${String(endTime.getMinutes()).padStart(2, '0')}`;
+    const dateStr = now.toISOString().split('T')[0];
+
+    const newSession: AttendanceSession = {
+      id: generateId('session'),
+      name: randomMeetingData.name.trim() || `Ad-hoc Sync (${timeStr})`,
+      session_type: 'Random Meeting',
+      domain: randomMeetingData.domain,
+      date: dateStr,
+      start_time: timeStr,
+      end_time: endTimeStr,
+      location: randomMeetingData.location.trim() || 'E-Cell Cabin / Campus',
+      description: '⚡ Impromptu / Random Meeting. Attendance is captured exclusively via live QR check-in. Non-attendees will NOT be marked absent.',
+      status: 'In Progress',
+      is_random_meeting: true,
+      created_by: user?.username || 'admin',
+      created_by_name: user?.full_name || 'Admin Lead',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    dispatch({ type: 'ADD_SESSION', payload: newSession });
+
+    if (isSupabaseConfigured() && supabase) {
+      await supabase.from('sessions').upsert({
+        id: newSession.id,
+        name: newSession.name,
+        session_type: newSession.session_type,
+        domain: newSession.domain,
+        date: newSession.date,
+        start_time: newSession.start_time,
+        end_time: newSession.end_time,
+        location: newSession.location,
+        description: newSession.description,
+        status: newSession.status,
+        created_by: newSession.created_by,
+        created_by_name: newSession.created_by_name,
+        created_at: newSession.created_at,
+        updated_at: newSession.updated_at,
+      });
+    }
+
+    setIsRandomModalOpen(false);
+    addToast({
+      type: 'success',
+      title: 'Random Meeting Started ⚡',
+      message: `Created "${newSession.name}". Projecting live QR code now...`,
+    });
+
+    setQrSession(newSession);
+  };
 
   // Automatically refresh latest sessions and attendance from Supabase Cloud on mount
   useEffect(() => {
@@ -102,11 +192,6 @@ export default function MeetingsEvents() {
   }, [selectedAttendanceSession, records, state.members]);
 
   // Form State
-  const defaultDomain: ECellDomain =
-    user?.role === 'master_admin' || user?.role === 'president'
-      ? 'All Domains'
-      : (user?.domain as ECellDomain) || 'Event Production & Curation';
-
   const [formData, setFormData] = useState({
     name: '',
     session_type: 'Domain Meeting' as SessionType,
@@ -349,13 +434,23 @@ export default function MeetingsEvents() {
           </div>
 
           {canCreateSession() && (
-            <button
-              onClick={handleOpenAdd}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-accent-primary hover:bg-blue-600 text-white font-medium shadow-lg shadow-blue-500/20 transition-all cursor-pointer"
-            >
-              <Plus className="h-4 w-4" />
-              <span>Create New Session</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleOpenRandomModal}
+                className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs shadow-lg shadow-purple-500/25 transition-all cursor-pointer border border-purple-400/30"
+                title="Instantly start an ad-hoc meeting and launch live QR code (Only QR scanners marked present; zero absentees)"
+              >
+                <Zap className="h-4 w-4" />
+                <span>+ Random Meeting</span>
+              </button>
+              <button
+                onClick={handleOpenAdd}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-accent-primary hover:bg-blue-600 text-white font-medium shadow-lg shadow-blue-500/20 transition-all cursor-pointer"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Create New Session</span>
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -446,9 +541,17 @@ export default function MeetingsEvents() {
                   <div>
                     {/* Top Badges */}
                     <div className="flex items-start justify-between gap-2 mb-2.5">
-                      <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold bg-accent-primary/10 text-accent-light border border-accent-primary/20">
-                        {session.domain}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold bg-accent-primary/10 text-accent-light border border-accent-primary/20">
+                          {session.domain}
+                        </span>
+                        {(session.session_type === 'Random Meeting' || !!session.is_random_meeting) && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1">
+                            <Zap className="h-3 w-3 text-purple-400" />
+                            <span>Random Meet</span>
+                          </span>
+                        )}
+                      </div>
 
                       <div className="flex items-center gap-1.5">
                         <span
@@ -523,7 +626,19 @@ export default function MeetingsEvents() {
 
                   {/* Bottom Footer */}
                   <div className="pt-3 border-t border-dark-border flex items-center justify-between text-xs gap-2">
-                    {stats.total > 0 ? (
+                    {(session.session_type === 'Random Meeting' || !!session.is_random_meeting) ? (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedAttendanceSession(session);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-300 font-bold text-[11px] cursor-pointer transition-colors"
+                        title="Random Meeting: Only QR scanners marked present (No absentees)"
+                      >
+                        <Users className="h-3 w-3" />
+                        <span>{stats.present + stats.late} Checked In (QR)</span>
+                      </button>
+                    ) : stats.total > 0 ? (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -616,6 +731,18 @@ export default function MeetingsEvents() {
                               </span>
                             );
                           })()
+                        ) : (session.session_type === 'Random Meeting' || !!session.is_random_meeting) ? (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedAttendanceSession(session);
+                            }}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-purple-500/15 border border-purple-500/30 text-purple-300 font-bold text-xs hover:bg-purple-500/25 transition-colors cursor-pointer"
+                            title="Click to view full attendance sheet"
+                          >
+                            <Users className="h-3 w-3" />
+                            <span>{stats.present + stats.late} Checked In (QR)</span>
+                          </button>
                         ) : stats.total > 0 ? (
                           <button
                             onClick={(e) => {
@@ -832,6 +959,87 @@ export default function MeetingsEvents() {
         </form>
       </Modal>
 
+            {/* Quick Random Meeting Modal */}
+      <Modal
+        isOpen={isRandomModalOpen}
+        onClose={() => setIsRandomModalOpen(false)}
+        title="⚡ Start Quick Random Meeting"
+        size="md"
+      >
+        <form onSubmit={handleCreateRandomMeeting} className="space-y-4">
+          <div className="p-3 bg-purple-500/15 border border-purple-500/30 rounded-xl text-purple-200 text-xs flex items-center gap-2">
+            <Zap className="h-4 w-4 text-purple-400 flex-shrink-0" />
+            <span>
+              <strong>Ad-hoc QR Attendance:</strong> Only members who scan the live QR code will be recorded as present. Non-attendees will <strong>NOT</strong> be marked absent.
+            </span>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-400 mb-1">
+              Meeting Title *
+            </label>
+            <input
+              type="text"
+              required
+              value={randomMeetingData.name}
+              onChange={(e) => setRandomMeetingData({ ...randomMeetingData, name: e.target.value })}
+              placeholder="e.g. Quick Core Sync / Impromptu Standup"
+              className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white focus:outline-none focus:border-purple-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-400 mb-1">
+              Target Scope *
+            </label>
+            <select
+              value={randomMeetingData.domain}
+              onChange={(e) => setRandomMeetingData({ ...randomMeetingData, domain: e.target.value as ECellDomain })}
+              className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white focus:outline-none focus:border-purple-500 cursor-pointer font-semibold"
+            >
+              {DOMAIN_OPTIONS.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
+            </select>
+            <span className="text-[10px] text-gray-500 mt-1 block">
+              Default is "All Domains" so anyone on campus can check in.
+            </span>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-400 mb-1">
+              Meeting Location
+            </label>
+            <input
+              type="text"
+              value={randomMeetingData.location}
+              onChange={(e) => setRandomMeetingData({ ...randomMeetingData, location: e.target.value })}
+              placeholder="e.g. E-Cell Cabin / Campus / Room 204"
+              className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white focus:outline-none focus:border-purple-500"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-3 border-t border-dark-border">
+            <button
+              type="button"
+              onClick={() => setIsRandomModalOpen(false)}
+              className="px-4 py-2 rounded-lg bg-dark-bg border border-dark-border text-gray-300 text-xs cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-5 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs cursor-pointer shadow-lg shadow-purple-500/25 flex items-center gap-1.5"
+            >
+              <Zap className="h-4 w-4" />
+              <span>Start & Project Live QR 🚀</span>
+            </button>
+          </div>
+        </form>
+      </Modal>
+
       {/* Delete Dialog */}
       <ConfirmDialog
         isOpen={!!sessionToDelete}
@@ -852,6 +1060,14 @@ export default function MeetingsEvents() {
           size="lg"
         >
           <div className="space-y-4">
+            {(selectedAttendanceSession.session_type === 'Random Meeting' || !!selectedAttendanceSession.is_random_meeting) && (
+              <div className="p-3 bg-purple-500/15 border border-purple-500/30 rounded-xl text-purple-200 text-xs flex items-center gap-2">
+                <Zap className="h-4 w-4 text-purple-400 flex-shrink-0" />
+                <span>
+                  <strong>Random Meeting Roster:</strong> Only members who scanned the QR code are listed as present. Zero absentees are marked; non-attendees are never penalized.
+                </span>
+              </div>
+            )}
             <div className="p-3 bg-dark-bg rounded-xl border border-dark-border flex flex-wrap items-center justify-between gap-3 text-xs">
               <div>
                 <span className="text-gray-400 block font-mono text-[11px]">

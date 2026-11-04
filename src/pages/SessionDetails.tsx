@@ -25,6 +25,7 @@ import {
   Trash2,
   QrCode,
   Smartphone,
+  Zap,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import {
@@ -101,16 +102,28 @@ export default function SessionDetails() {
     return state.records.filter((r) => r.session_id === session.id);
   }, [state.records, session]);
 
+  const isRandomMeeting = session?.session_type === 'Random Meeting' || !!session?.is_random_meeting;
+  const [manualAttendees, setManualAttendees] = useState<string[]>([]);
+  const [selectedMemberToAdd, setSelectedMemberToAdd] = useState('');
+
   // Combine roster members and any existing record members so all records are always visible
   const applicableMembers = useMemo(() => {
     if (!session) return [];
+    if (isRandomMeeting) {
+      const recordMemberIds = new Set(existingRecords.map((r) => r.member_id));
+      const scannedMembers = state.members.filter((m) => recordMemberIds.has(m.id));
+      const manualAdded = state.members.filter(
+        (m) => manualAttendees.includes(m.id) && !recordMemberIds.has(m.id)
+      );
+      return [...scannedMembers, ...manualAdded];
+    }
     const fromRoster = getApplicableMembersForSession(session);
     const recordMemberIds = new Set(existingRecords.map((r) => r.member_id));
     const extraMembers = state.members.filter(
       (m) => recordMemberIds.has(m.id) && !fromRoster.some((r) => r.id === m.id)
     );
     return [...fromRoster, ...extraMembers];
-  }, [session, getApplicableMembersForSession, existingRecords, state.members]);
+  }, [session, isRandomMeeting, existingRecords, state.members, manualAttendees, getApplicableMembersForSession]);
 
   const [attendanceMap, setAttendanceMap] = useState<
     Record<string, { status: AttendanceStatus; remarks: string }>
@@ -184,6 +197,25 @@ export default function SessionDetails() {
   const userCanManage = canManageSession(session);
   const userCanUploadMoM = canUploadMoM(session);
 
+  const handleAddManualAttendee = (memberId: string) => {
+    if (!memberId) return;
+    if (!manualAttendees.includes(memberId)) {
+      setManualAttendees((prev) => [...prev, memberId]);
+      setAttendanceMap((prev) => ({
+        ...prev,
+        [memberId]: { status: 'present', remarks: 'Manually marked (In-person check-in)' },
+      }));
+      setIsDirty(true);
+      setSelectedMemberToAdd('');
+      const m = state.members.find((x) => x.id === memberId);
+      addToast({
+        type: 'success',
+        title: 'Attendee Added',
+        message: `${m?.name || 'Member'} added to attendee list. Click Save Changes to commit.`,
+      });
+    }
+  };
+
   // Status Change Handlers
   const handleStatusChange = (memberId: string, status: AttendanceStatus) => {
     if (!userCanManage) return;
@@ -212,6 +244,14 @@ export default function SessionDetails() {
   // Bulk set
   const handleBulkSet = (status: AttendanceStatus) => {
     if (!userCanManage) return;
+    if (isRandomMeeting && status === 'absent') {
+      addToast({
+        type: 'info',
+        title: 'Random Meeting Rule',
+        message: 'Members cannot be marked absent in a Random Meeting. Only attendees are recorded.',
+      });
+      return;
+    }
     setIsDirty(true);
     const updated: Record<string, { status: AttendanceStatus; remarks: string }> = {};
     applicableMembers.forEach((m) => {
@@ -409,10 +449,16 @@ export default function SessionDetails() {
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-accent-primary/10 text-accent-light border border-accent-primary/20">
                 {session.domain}
               </span>
+              {isRandomMeeting && (
+                <span className="text-xs px-2.5 py-0.5 rounded-full font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1">
+                  <Zap className="h-3 w-3 text-purple-400" />
+                  <span>Random Meeting</span>
+                </span>
+              )}
               <span
                 className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${
                   session.status === 'Completed'
@@ -525,7 +571,9 @@ export default function SessionDetails() {
               <span>Section B: Attendance Records</span>
             </h2>
             <p className="text-xs text-gray-500 mt-0.5">
-              Targeted roster: {session.domain} ({applicableMembers.length} members expected)
+              {isRandomMeeting
+                ? `Ad-hoc Meeting: ${applicableMembers.length} attendees checked in (No absentees marked)`
+                : `Targeted roster: ${session.domain} (${applicableMembers.length} members expected)`}
             </p>
           </div>
 
@@ -593,16 +641,55 @@ export default function SessionDetails() {
                 >
                   All Present
                 </button>
-                <button
-                  onClick={() => handleBulkSet('absent')}
-                  className="px-2.5 py-1.5 rounded-lg bg-status-absent/15 hover:bg-status-absent/25 text-status-absent text-xs font-semibold cursor-pointer border border-status-absent/30"
-                >
-                  All Absent
-                </button>
+                {!isRandomMeeting && (
+                  <button
+                    onClick={() => handleBulkSet('absent')}
+                    className="px-2.5 py-1.5 rounded-lg bg-status-absent/15 hover:bg-status-absent/25 text-status-absent text-xs font-semibold cursor-pointer border border-status-absent/30"
+                  >
+                    All Absent
+                  </button>
+                )}
               </>
             )}
           </div>
         </div>
+
+        {isRandomMeeting && (
+          <div className="p-3 bg-purple-500/15 border border-purple-500/30 rounded-xl text-purple-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Zap className="h-4 w-4 text-purple-400 flex-shrink-0" />
+              <span>
+                <strong>Random Meeting Mode:</strong> Only members who scanned the QR code (or were added manually) are recorded as attendees. Zero absentees are marked; non-attendees suffer no negative attendance impact.
+              </span>
+            </div>
+            {userCanManage && (
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <select
+                  value={selectedMemberToAdd}
+                  onChange={(e) => setSelectedMemberToAdd(e.target.value)}
+                  className="px-2.5 py-1.5 bg-dark-bg border border-purple-500/30 rounded-lg text-xs text-white focus:outline-none focus:border-purple-400 cursor-pointer max-w-[200px]"
+                >
+                  <option value="">+ Add in-person attendee...</option>
+                  {state.members
+                    .filter((m) => !applicableMembers.some((a) => a.id === m.id))
+                    .map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} ({m.department})
+                      </option>
+                    ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => handleAddManualAttendee(selectedMemberToAdd)}
+                  disabled={!selectedMemberToAdd}
+                  className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white font-bold text-xs rounded-lg cursor-pointer transition-colors"
+                >
+                  Add
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Attendance Statistics Summary Bar */}
         <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 text-center">
@@ -657,8 +744,18 @@ export default function SessionDetails() {
             <tbody className="divide-y divide-dark-border">
               {applicableMembers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-6 text-center text-gray-500">
-                    No members currently assigned to {session.domain}. Assign members to include them.
+                  <td colSpan={5} className="p-8 text-center text-gray-500">
+                    {isRandomMeeting ? (
+                      <div className="space-y-2 py-4">
+                        <Zap className="h-8 w-8 text-purple-400 mx-auto" />
+                        <div className="font-semibold text-white">No attendees have checked in yet</div>
+                        <div className="text-xs text-gray-400 max-w-sm mx-auto">
+                          Click "Project QR" to show the live QR code on screen for members to scan, or use the dropdown above to add in-person attendees.
+                        </div>
+                      </div>
+                    ) : (
+                      `No members currently assigned to ${session.domain}. Assign members to include them.`
+                    )}
                   </td>
                 </tr>
               ) : (
@@ -901,7 +998,9 @@ export default function SessionDetails() {
       >
         <div className="space-y-4">
           <p className="text-xs text-gray-300">
-            You are about to save attendance for {stats.totalExpected} members in "{session.name}".
+            {isRandomMeeting
+              ? `You are about to save attendance for ${stats.present + stats.late} checked-in attendees in "${session.name}". Non-attendees will NOT be marked absent.`
+              : `You are about to save attendance for ${stats.totalExpected} members in "${session.name}".`}
             Please specify an optional reason for the audit log:
           </p>
           <input

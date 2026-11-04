@@ -880,6 +880,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (session.domain === 'All Domains') return true;
         if (session.domain === 'General E-Cell / Core Committee') return true;
         if (session.domain === 'Core Leads') return true;
+        if (session.session_type === 'Random Meeting' || (session as any).is_random_meeting) return true;
         return user.domain === session.domain;
       }
       return false;
@@ -1035,6 +1036,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       )
         return true;
       if (session.domain === 'All Domains') return true;
+      if (session.session_type === 'Random Meeting' || (session as any).is_random_meeting) return true;
       if (user.role === 'lead_admin' || user.role === 'co_lead') {
         if (session.domain === 'General E-Cell / Core Committee') return true;
         if (session.domain === 'Core Leads') return true;
@@ -1048,6 +1050,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const getApplicableMembersForSession = useCallback(
     (session: AttendanceSession): Member[] => {
+      if (session.session_type === 'Random Meeting' || (session as any).is_random_meeting) {
+        const sessRecordMemberIds = new Set(
+          state.records.filter((r) => r.session_id === session.id).map((r) => r.member_id)
+        );
+        return state.members.filter((m) => sessRecordMemberIds.has(m.id));
+      }
       if (session.domain === 'All Domains') {
         return state.members;
       }
@@ -1071,7 +1079,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
       return domainMembers;
     },
-    [state.members]
+    [state.members, state.records]
   );
 
   const getSessionMoM = useCallback(

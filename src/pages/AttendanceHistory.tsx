@@ -28,6 +28,7 @@ const EVENT_CATEGORIES: EventCategory[] = [
   'Recruitment',
   'Sponsorship Meeting',
   'Event Management',
+  'Random Meeting',
   'General E-Cell Work',
   'Other',
 ];
