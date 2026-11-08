@@ -20,38 +20,36 @@
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
-@layer base {
-  * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-  }
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
 
-  body {
-    font-family: var(--font-sans);
-    background-color: var(--color-dark-bg);
-    color: #FFFFFF;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-  }
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-dark-bg);
+  color: #FFFFFF;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
 
-  ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
 
-  ::-webkit-scrollbar-track {
-    background: var(--color-dark-bg);
-  }
+::-webkit-scrollbar-track {
+  background: var(--color-dark-bg);
+}
 
-  ::-webkit-scrollbar-thumb {
-    background: var(--color-dark-border);
-    border-radius: 3px;
-  }
+::-webkit-scrollbar-thumb {
+  background: var(--color-dark-border);
+  border-radius: 3px;
+}
 
-  ::-webkit-scrollbar-thumb:hover {
-    background: var(--color-accent-primary);
-  }
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent-primary);
 }
 
 /* Animation keyframes */

@@ -76,6 +76,7 @@ export interface MeetingMinutes {
   uploaded_at: string;
   updated_at: string;
   version: number;
+  is_draft?: boolean;
 }
 
 export interface Member {

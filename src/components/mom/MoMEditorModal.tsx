@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   FileText,
   Plus,
@@ -12,6 +12,8 @@ import {
   Users,
   Check,
   AlertCircle,
+  FileDown,
+  Timer,
 } from 'lucide-react';
 import Modal from '../ui/Modal';
 import { MeetingMinutes, ActionItem, AttendanceSession } from '../../types';
@@ -24,6 +26,9 @@ interface MoMEditorModalProps {
   existingMoM?: MeetingMinutes;
   onSave: (mom: MeetingMinutes) => Promise<void>;
 }
+
+const DRAFT_KEY_PREFIX = 'mom-draft-';
+const AUTO_SAVE_INTERVAL = 60000; // 60 seconds
 
 export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
   isOpen,
@@ -84,6 +89,16 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
   const [verifiedBy, setVerifiedBy] = useState(existingMoM?.verified_by || 'Parth Amilkanthwar (Master Admin)');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const [lastAutoSaved, setLastAutoSaved] = useState<string | null>(null);
+  const [showDraftRecovery, setShowDraftRecovery] = useState(false);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Track changes
+  const markDirty = useCallback(() => {
+    setIsDirty(true);
+  }, []);
 
   // Sync state if existingMoM changes
   useEffect(() => {
@@ -122,6 +137,221 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
     }
   }, [existingMoM, session, user]);
 
+  // Check for saved draft on modal open
+  useEffect(() => {
+    if (isOpen && !existingMoM) {
+      const draftKey = DRAFT_KEY_PREFIX + session.id;
+      const saved = localStorage.getItem(draftKey);
+      if (saved) {
+        try {
+          const draft = JSON.parse(saved);
+          if (draft && draft.domain) {
+            setShowDraftRecovery(true);
+          }
+        } catch {
+          // Invalid draft, ignore
+        }
+      }
+    }
+  }, [isOpen, session.id, existingMoM]);
+
+  // Restore draft from localStorage
+  const handleRestoreDraft = () => {
+    const draftKey = DRAFT_KEY_PREFIX + session.id;
+    const saved = localStorage.getItem(draftKey);
+    if (!saved) return;
+
+    try {
+      const draft = JSON.parse(saved);
+      if (draft.domain) setDomain(draft.domain);
+      if (draft.date) setDate(draft.date);
+      if (draft.time) setTime(draft.time);
+      if (draft.venue) setVenue(draft.venue);
+      if (draft.conducted_by) setConductedBy(draft.conducted_by);
+      if (draft.prepared_by) setPreparedBy(draft.prepared_by);
+      if (draft.attendance_present) setAttendancePresent(draft.attendance_present);
+      if (draft.attendance_absent) setAttendanceAbsent(draft.attendance_absent);
+      if (draft.agenda_discussion?.length) setAgendaDiscussion(draft.agenda_discussion);
+      if (draft.key_decisions?.length) setKeyDecisions(draft.key_decisions);
+      if (draft.action_items?.length) setActionItems(draft.action_items);
+      if (draft.updates_requirements?.length) setUpdatesRequirements(draft.updates_requirements);
+      if (draft.next_meeting_date) setNextMeetingDate(draft.next_meeting_date);
+      if (draft.next_meeting_agenda) setNextMeetingAgenda(draft.next_meeting_agenda);
+      if (draft.verified_by) setVerifiedBy(draft.verified_by);
+
+      addToast({
+        type: 'success',
+        title: 'Draft Restored',
+        message: `Recovered your unsaved MoM draft from ${new Date(draft._savedAt).toLocaleString()}.`,
+      });
+    } catch {
+      addToast({ type: 'error', title: 'Draft Recovery Failed', message: 'Could not parse saved draft.' });
+    }
+    setShowDraftRecovery(false);
+  };
+
+  const handleDiscardDraft = () => {
+    localStorage.removeItem(DRAFT_KEY_PREFIX + session.id);
+    setShowDraftRecovery(false);
+    addToast({ type: 'info', title: 'Draft Discarded', message: 'Previous draft has been removed.' });
+  };
+
+  // Build MoM object from current form state
+  const buildMoMObject = (isDraft: boolean): MeetingMinutes => {
+    const cleanAgenda = agendaDiscussion.map((s) => s.trim()).filter(Boolean);
+    const cleanDecisions = keyDecisions.map((s) => s.trim()).filter(Boolean);
+    const cleanUpdates = updatesRequirements.map((s) => s.trim()).filter(Boolean);
+    const cleanActionItems = actionItems.filter((a) => a.task.trim().length > 0);
+
+    return {
+      id: existingMoM?.id || `mom-${session.id}`,
+      session_id: session.id,
+      document_name: `${session.name.replace(/[^a-zA-Z0-9]/g, '_')}_Official_MoM.pdf`,
+      document_type: 'digital',
+      document_size: 'Formal Document',
+      summary: cleanAgenda.length > 0
+        ? cleanAgenda.join('\n')
+        : (session.description && session.description.includes('__ECELL_MOM__:')
+            ? session.description.split('__ECELL_MOM__:')[0].trim()
+            : session.description) || 'Minutes recorded.',
+      notes: cleanUpdates.join('\n'),
+
+      // Official Template Fields
+      domain,
+      date,
+      time,
+      venue,
+      conducted_by: conductedBy,
+      prepared_by: preparedBy,
+
+      attendance_present: attendancePresent.trim(),
+      attendance_absent: attendanceAbsent.trim(),
+
+      agenda_discussion: isDraft ? agendaDiscussion : cleanAgenda,
+      key_decisions: isDraft ? keyDecisions : cleanDecisions,
+      action_items: isDraft ? actionItems : cleanActionItems,
+      updates_requirements: isDraft ? updatesRequirements : cleanUpdates,
+
+      next_meeting_date: nextMeetingDate,
+      next_meeting_agenda: nextMeetingAgenda,
+      next_meeting_prepared_by: preparedBy,
+      verified_by: verifiedBy,
+
+      uploaded_by: user?.username || 'scribe',
+      uploaded_by_name: preparedBy,
+      uploaded_at: existingMoM?.uploaded_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      version: (existingMoM?.version || 0) + 1,
+      is_draft: isDraft,
+    };
+  };
+
+  // Save draft to localStorage
+  const saveDraftToLocal = useCallback(() => {
+    const draftData = {
+      domain,
+      date,
+      time,
+      venue,
+      conducted_by: conductedBy,
+      prepared_by: preparedBy,
+      attendance_present: attendancePresent,
+      attendance_absent: attendanceAbsent,
+      agenda_discussion: agendaDiscussion,
+      key_decisions: keyDecisions,
+      action_items: actionItems,
+      updates_requirements: updatesRequirements,
+      next_meeting_date: nextMeetingDate,
+      next_meeting_agenda: nextMeetingAgenda,
+      verified_by: verifiedBy,
+      _savedAt: new Date().toISOString(),
+    };
+    localStorage.setItem(DRAFT_KEY_PREFIX + session.id, JSON.stringify(draftData));
+    setLastAutoSaved(new Date().toLocaleTimeString());
+  }, [domain, date, time, venue, conductedBy, preparedBy, attendancePresent, attendanceAbsent,
+      agendaDiscussion, keyDecisions, actionItems, updatesRequirements, nextMeetingDate,
+      nextMeetingAgenda, verifiedBy, session.id]);
+
+  // Auto-save timer: every 60s if dirty
+  useEffect(() => {
+    if (isOpen && isDirty) {
+      autoSaveTimerRef.current = setInterval(() => {
+        saveDraftToLocal();
+      }, AUTO_SAVE_INTERVAL);
+    }
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearInterval(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+    };
+  }, [isOpen, isDirty, saveDraftToLocal]);
+
+  // Save Draft handler (saves to cloud as draft)
+  const handleSaveDraft = async () => {
+    setIsSavingDraft(true);
+    const draftMoM = buildMoMObject(true);
+
+    try {
+      // Save to localStorage first
+      saveDraftToLocal();
+      // Then save to cloud with is_draft: true
+      await onSave(draftMoM);
+      setIsDirty(false);
+      addToast({
+        type: 'success',
+        title: 'Draft Saved',
+        message: 'Your MoM draft has been saved. You can continue editing later.',
+      });
+    } catch (err) {
+      console.error('Failed to save draft:', err);
+      addToast({
+        type: 'error',
+        title: 'Draft Save Failed',
+        message: 'Could not save draft to cloud. Local draft preserved.',
+      });
+    } finally {
+      setIsSavingDraft(false);
+    }
+  };
+
+  // Publish handler (final save)
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    const newMoM = buildMoMObject(false);
+
+    try {
+      await onSave(newMoM);
+      // Clear local draft on successful publish
+      localStorage.removeItem(DRAFT_KEY_PREFIX + session.id);
+      setIsDirty(false);
+      onClose();
+    } catch (err) {
+      console.error('Failed to save MoM:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Unsaved changes warning on close
+  const handleCloseWithCheck = () => {
+    if (isDirty) {
+      const confirmed = window.confirm(
+        'You have unsaved changes. Would you like to save a draft before closing?\n\nClick OK to save draft, or Cancel to discard changes.'
+      );
+      if (confirmed) {
+        saveDraftToLocal();
+        addToast({
+          type: 'info',
+          title: 'Draft Auto-Saved',
+          message: 'Your changes have been saved locally. They will be restored when you reopen.',
+        });
+      }
+    }
+    onClose();
+  };
+
   // One-Click Auto-Fill from Session Attendance
   const handleAutoFillFromSession = () => {
     const sessionRecords = state.records.filter((r) => r.session_id === session.id);
@@ -158,6 +388,7 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
       setAttendanceAbsent('None (100% Attendance)');
     }
 
+    markDirty();
     addToast({
       type: 'success',
       title: 'Auto-Filled from Session',
@@ -165,9 +396,10 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
     });
   };
 
-  // Dynamic Array Helpers
+  // Dynamic Array Helpers (with dirty tracking)
   const handleAddPoint = (setter: React.Dispatch<React.SetStateAction<string[]>>) => {
     setter((prev) => [...prev, '']);
+    markDirty();
   };
 
   const handleUpdatePoint = (
@@ -180,6 +412,7 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
       copy[index] = val;
       return copy;
     });
+    markDirty();
   };
 
   const handleRemovePoint = (
@@ -187,6 +420,7 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
     setter: React.Dispatch<React.SetStateAction<string[]>>
   ) => {
     setter((prev) => prev.filter((_, i) => i !== index));
+    markDirty();
   };
 
   // Action Items Table Helpers
@@ -201,6 +435,7 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
         status: 'Pending',
       },
     ]);
+    markDirty();
   };
 
   const handleUpdateActionItem = (index: number, field: keyof ActionItem, value: any) => {
@@ -209,105 +444,123 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
       copy[index] = { ...copy[index], [field]: value };
       return copy;
     });
+    markDirty();
   };
 
   const handleRemoveActionItem = (index: number) => {
     setActionItems((prev) => prev.filter((_, i) => i !== index));
+    markDirty();
   };
 
-  // Submit Handler
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-
-    const cleanAgenda = agendaDiscussion.map((s) => s.trim()).filter(Boolean);
-    const cleanDecisions = keyDecisions.map((s) => s.trim()).filter(Boolean);
-    const cleanUpdates = updatesRequirements.map((s) => s.trim()).filter(Boolean);
-    const cleanActionItems = actionItems.filter((a) => a.task.trim().length > 0);
-
-    const newMoM: MeetingMinutes = {
-      id: existingMoM?.id || `mom-${session.id}`,
-      session_id: session.id,
-      document_name: `${session.name.replace(/[^a-zA-Z0-9]/g, '_')}_Official_MoM.pdf`,
-      document_type: 'digital',
-      document_size: 'Formal Document',
-      summary: cleanAgenda.length > 0
-        ? cleanAgenda.join('\n')
-        : (session.description && session.description.includes('__ECELL_MOM__:')
-            ? session.description.split('__ECELL_MOM__:')[0].trim()
-            : session.description) || 'Minutes recorded.',
-      notes: cleanUpdates.join('\n'),
-
-      // Official Template Fields
-      domain,
-      date,
-      time,
-      venue,
-      conducted_by: conductedBy,
-      prepared_by: preparedBy,
-
-      attendance_present: attendancePresent.trim(),
-      attendance_absent: attendanceAbsent.trim(),
-
-      agenda_discussion: cleanAgenda,
-      key_decisions: cleanDecisions,
-      action_items: cleanActionItems,
-      updates_requirements: cleanUpdates,
-
-      next_meeting_date: nextMeetingDate,
-      next_meeting_agenda: nextMeetingAgenda,
-      next_meeting_prepared_by: preparedBy,
-      verified_by: verifiedBy,
-
-      uploaded_by: user?.username || 'scribe',
-      uploaded_by_name: preparedBy,
-      uploaded_at: existingMoM?.uploaded_at || new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      version: (existingMoM?.version || 0) + 1,
-    };
-
-    try {
-      await onSave(newMoM);
-      onClose();
-    } catch (err) {
-      console.error('Failed to save MoM:', err);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+  // Calculate completion percentage
+  const completionStats = (() => {
+    let filled = 0;
+    let total = 10;
+    if (domain) filled++;
+    if (date) filled++;
+    if (time) filled++;
+    if (venue) filled++;
+    if (conductedBy) filled++;
+    if (preparedBy) filled++;
+    if (attendancePresent) filled++;
+    if (agendaDiscussion.some(a => a.trim())) filled++;
+    if (keyDecisions.some(k => k.trim())) filled++;
+    if (actionItems.some(a => a.task.trim())) filled++;
+    return { filled, total, pct: Math.round((filled / total) * 100) };
+  })();
 
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={handleCloseWithCheck}
       title={existingMoM ? 'Edit Minutes of Meeting (MoM)' : 'Create Official Minutes of Meeting (MoM)'}
       size="xl"
     >
       <form onSubmit={handleSubmit} className="space-y-6 text-xs max-h-[80vh] overflow-y-auto px-1 pr-2">
-        {/* Banner with Auto-fill helper */}
+        {/* Draft Recovery Banner */}
+        {showDraftRecovery && (
+          <div className="p-3.5 bg-amber-500/15 border border-amber-500/30 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-pulse">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+                <FileDown className="h-4 w-4 text-amber-400" />
+              </div>
+              <div>
+                <h4 className="font-bold text-white text-xs">Unsaved Draft Found</h4>
+                <p className="text-[11px] text-gray-300">
+                  A previous draft was auto-saved for this session. Would you like to restore it?
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleRestoreDraft}
+                className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs cursor-pointer transition-colors"
+              >
+                Restore Draft
+              </button>
+              <button
+                type="button"
+                onClick={handleDiscardDraft}
+                className="px-3 py-1.5 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-gray-400 text-xs cursor-pointer transition-colors"
+              >
+                Discard
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Banner with Auto-fill helper + Completion Progress */}
         <div className="p-3.5 bg-accent-primary/10 border border-accent-primary/30 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 flex-1">
             <div className="w-8 h-8 rounded-lg bg-accent-primary/20 flex items-center justify-center flex-shrink-0">
               <FileText className="h-4 w-4 text-accent-light" />
             </div>
-            <div>
+            <div className="flex-1">
               <h4 className="font-bold text-white text-xs">Official E-Cell RSCOE MoM Format</h4>
-              <p className="text-[11px] text-gray-300">
-                Direct in-app format matching the official college Minutes of Meeting document.
-              </p>
+              <div className="flex items-center gap-3 mt-1">
+                <div className="flex-1 max-w-[150px] bg-dark-bg rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      completionStats.pct === 100 ? 'bg-status-success' :
+                      completionStats.pct >= 60 ? 'bg-accent-primary' : 'bg-amber-500'
+                    }`}
+                    style={{ width: `${completionStats.pct}%` }}
+                  />
+                </div>
+                <span className="text-[10px] text-gray-400">
+                  {completionStats.filled}/{completionStats.total} fields ({completionStats.pct}%)
+                </span>
+              </div>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={handleAutoFillFromSession}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-primary hover:bg-blue-600 text-white font-semibold text-xs shadow transition-all cursor-pointer flex-shrink-0"
-            title="Auto-fill session info and marked attendance"
-          >
-            <Zap className="h-3.5 w-3.5 text-yellow-300" />
-            <span>Auto-fill from Session</span>
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {lastAutoSaved && (
+              <span className="text-[10px] text-gray-500 flex items-center gap-1">
+                <Timer className="h-3 w-3" />
+                Auto-saved {lastAutoSaved}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={handleAutoFillFromSession}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent-primary hover:bg-blue-600 text-white font-semibold text-xs shadow transition-all cursor-pointer flex-shrink-0"
+              title="Auto-fill session info and marked attendance"
+            >
+              <Zap className="h-3.5 w-3.5 text-yellow-300" />
+              <span>Auto-fill from Session</span>
+            </button>
+          </div>
         </div>
+
+        {/* Existing Draft Indicator */}
+        {existingMoM?.is_draft && (
+          <div className="p-2.5 bg-amber-500/10 border border-amber-500/25 rounded-lg flex items-center gap-2 text-amber-300 text-[11px]">
+            <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
+            <span>This MoM is currently saved as a <strong>Draft</strong>. Click "Save & Publish" to finalize it.</span>
+          </div>
+        )}
 
         {/* ─── SECTION 1: MEETING DETAILS ─── */}
         <div className="bg-dark-bg p-4 border border-dark-border rounded-xl space-y-3">
@@ -321,7 +574,7 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
                 type="text"
                 required
                 value={domain}
-                onChange={(e) => setDomain(e.target.value)}
+                onChange={(e) => { setDomain(e.target.value); markDirty(); }}
                 className="w-full px-3 py-2 bg-dark-card border border-dark-border rounded-lg text-white focus:outline-none focus:border-accent-primary"
               />
             </div>
@@ -331,7 +584,7 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
                 type="date"
                 required
                 value={date}
-                onChange={(e) => setDate(e.target.value)}
+                onChange={(e) => { setDate(e.target.value); markDirty(); }}
                 className="w-full px-3 py-2 bg-dark-card border border-dark-border rounded-lg text-white focus:outline-none focus:border-accent-primary"
               />
             </div>
@@ -341,7 +594,7 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
                 type="text"
                 required
                 value={time}
-                onChange={(e) => setTime(e.target.value)}
+                onChange={(e) => { setTime(e.target.value); markDirty(); }}
                 placeholder="e.g. 18:00 - 19:30"
                 className="w-full px-3 py-2 bg-dark-card border border-dark-border rounded-lg text-white focus:outline-none focus:border-accent-primary"
               />
@@ -352,7 +605,7 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
                 type="text"
                 required
                 value={venue}
-                onChange={(e) => setVenue(e.target.value)}
+                onChange={(e) => { setVenue(e.target.value); markDirty(); }}
                 placeholder="e.g. Room 302 / Incubation Center"
                 className="w-full px-3 py-2 bg-dark-card border border-dark-border rounded-lg text-white focus:outline-none focus:border-accent-primary"
               />
@@ -363,7 +616,7 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
                 type="text"
                 required
                 value={conductedBy}
-                onChange={(e) => setConductedBy(e.target.value)}
+                onChange={(e) => { setConductedBy(e.target.value); markDirty(); }}
                 placeholder="Name of Lead / Moderator"
                 className="w-full px-3 py-2 bg-dark-card border border-dark-border rounded-lg text-white focus:outline-none focus:border-accent-primary"
               />
@@ -374,7 +627,7 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
                 type="text"
                 required
                 value={preparedBy}
-                onChange={(e) => setPreparedBy(e.target.value)}
+                onChange={(e) => { setPreparedBy(e.target.value); markDirty(); }}
                 placeholder="Name of Member / Scribe"
                 className="w-full px-3 py-2 bg-dark-card border border-dark-border rounded-lg text-white focus:outline-none focus:border-accent-primary"
               />
@@ -396,7 +649,7 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
               <textarea
                 rows={2}
                 value={attendancePresent}
-                onChange={(e) => setAttendancePresent(e.target.value)}
+                onChange={(e) => { setAttendancePresent(e.target.value); markDirty(); }}
                 placeholder="Names of all present members (separated by commas)"
                 className="w-full px-3 py-2 bg-dark-card border border-dark-border rounded-lg text-white focus:outline-none focus:border-accent-primary leading-relaxed"
               />
@@ -408,7 +661,7 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
               <textarea
                 rows={2}
                 value={attendanceAbsent}
-                onChange={(e) => setAttendanceAbsent(e.target.value)}
+                onChange={(e) => { setAttendanceAbsent(e.target.value); markDirty(); }}
                 placeholder="Names of absent members, or 'None (100% Attendance)'"
                 className="w-full px-3 py-2 bg-dark-card border border-dark-border rounded-lg text-white focus:outline-none focus:border-accent-primary leading-relaxed"
               />
@@ -474,7 +727,7 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
           <div className="space-y-2">
             {keyDecisions.map((decision, idx) => (
               <div key={idx} className="flex items-center gap-2">
-                <span className="w-5 text-center font-black text-accent-light flex-shrink-0">•</span>
+                <span className="w-5 text-center font-black text-accent-light flex-shrink-0">{String.fromCharCode(8226)}</span>
                 <input
                   type="text"
                   value={decision}
@@ -594,7 +847,7 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
           <div className="space-y-2">
             {updatesRequirements.map((req, idx) => (
               <div key={idx} className="flex items-center gap-2">
-                <span className="w-5 text-center font-black text-amber-400 flex-shrink-0">•</span>
+                <span className="w-5 text-center font-black text-amber-400 flex-shrink-0">{String.fromCharCode(8226)}</span>
                 <input
                   type="text"
                   value={req}
@@ -627,7 +880,7 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
               <input
                 type="text"
                 value={nextMeetingDate}
-                onChange={(e) => setNextMeetingDate(e.target.value)}
+                onChange={(e) => { setNextMeetingDate(e.target.value); markDirty(); }}
                 placeholder="e.g. 2026-11-04 or Next Wednesday"
                 className="w-full px-3 py-2 bg-dark-card border border-dark-border rounded-lg text-white focus:outline-none focus:border-accent-primary"
               />
@@ -637,7 +890,7 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
               <input
                 type="text"
                 value={nextMeetingAgenda}
-                onChange={(e) => setNextMeetingAgenda(e.target.value)}
+                onChange={(e) => { setNextMeetingAgenda(e.target.value); markDirty(); }}
                 placeholder="e.g. Budget approval and final vendor confirmation"
                 className="w-full px-3 py-2 bg-dark-card border border-dark-border rounded-lg text-white focus:outline-none focus:border-accent-primary"
               />
@@ -647,7 +900,7 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
               <input
                 type="text"
                 value={preparedBy}
-                onChange={(e) => setPreparedBy(e.target.value)}
+                onChange={(e) => { setPreparedBy(e.target.value); markDirty(); }}
                 className="w-full px-3 py-2 bg-dark-card border border-dark-border rounded-lg text-white focus:outline-none focus:border-accent-primary font-medium"
               />
             </div>
@@ -656,30 +909,50 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
               <input
                 type="text"
                 value={verifiedBy}
-                onChange={(e) => setVerifiedBy(e.target.value)}
+                onChange={(e) => { setVerifiedBy(e.target.value); markDirty(); }}
                 className="w-full px-3 py-2 bg-dark-card border border-dark-border rounded-lg text-white focus:outline-none focus:border-accent-primary font-medium"
               />
             </div>
           </div>
         </div>
 
-        {/* Modal Action Buttons */}
-        <div className="flex items-center justify-end gap-3 pt-4 border-t border-dark-border">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-gray-300 text-xs transition-colors cursor-pointer"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-accent-primary hover:bg-blue-600 disabled:opacity-50 text-white font-semibold text-xs shadow-lg shadow-blue-500/20 transition-all cursor-pointer"
-          >
-            <Save className="h-4 w-4" />
-            <span>{isSubmitting ? 'Saving & Syncing...' : 'Save & Publish MoM'}</span>
-          </button>
+        {/* Modal Action Buttons - Draft + Publish */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-dark-border">
+          <div className="flex items-center gap-2">
+            {isDirty && (
+              <span className="text-[10px] text-amber-400 flex items-center gap-1 animate-pulse">
+                <AlertCircle className="h-3 w-3" />
+                Unsaved changes
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleCloseWithCheck}
+              className="px-4 py-2 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-gray-300 text-xs transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveDraft}
+              disabled={isSavingDraft || isSubmitting}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 disabled:opacity-50 text-amber-300 font-semibold text-xs transition-all cursor-pointer"
+            >
+              <FileDown className="h-4 w-4" />
+              <span>{isSavingDraft ? 'Saving Draft...' : 'Save as Draft'}</span>
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting || isSavingDraft}
+              className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-accent-primary hover:bg-blue-600 disabled:opacity-50 text-white font-semibold text-xs shadow-lg shadow-blue-500/20 transition-all cursor-pointer"
+            >
+              <Save className="h-4 w-4" />
+              <span>{isSubmitting ? 'Saving & Syncing...' : 'Save & Publish MoM'}</span>
+            </button>
+          </div>
         </div>
       </form>
     </Modal>

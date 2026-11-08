@@ -379,7 +379,8 @@ export default function MeetingsEvents() {
         // MoM status
         const mom = getSessionMoM(s.id);
         let matchesMoM = true;
-        if (momFilter === 'uploaded') matchesMoM = !!mom;
+        if (momFilter === 'uploaded') matchesMoM = !!mom && !mom.is_draft;
+        if (momFilter === 'draft') matchesMoM = !!mom && !!mom.is_draft;
         if (momFilter === 'pending') matchesMoM = !mom && s.status === 'Completed';
 
         return matchesSearch && matchesDomain && matchesType && matchesStatus && matchesMoM;
@@ -510,7 +511,8 @@ export default function MeetingsEvents() {
               className="w-full px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white focus:outline-none focus:border-accent-primary cursor-pointer"
             >
               <option value="ALL">All MoM Statuses</option>
-              <option value="uploaded">MoM Uploaded</option>
+              <option value="uploaded">MoM Published</option>
+              <option value="draft">MoM Draft</option>
               <option value="pending">MoM Pending (Completed)</option>
             </select>
           </div>
@@ -557,13 +559,15 @@ export default function MeetingsEvents() {
                         <span
                           className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
                             mom
-                              ? 'bg-status-success/15 text-status-success border border-status-success/30'
+                              ? mom.is_draft
+                                ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                                : 'bg-status-success/15 text-status-success border border-status-success/30'
                               : session.status === 'Completed'
                               ? 'bg-status-late/15 text-status-late border border-status-late/30'
                               : 'bg-blue-500/15 text-blue-400'
                           }`}
                         >
-                          {mom ? 'MoM Uploaded' : session.status === 'Completed' ? 'MoM Pending' : session.status}
+                          {mom ? (mom.is_draft ? 'MoM Draft' : 'MoM Recorded') : session.status === 'Completed' ? 'MoM Pending' : session.status}
                         </span>
 
                         {userCanManage && (
@@ -763,11 +767,13 @@ export default function MeetingsEvents() {
                         <span
                           className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                             mom
-                              ? 'bg-status-success/15 text-status-success'
+                              ? mom.is_draft
+                                ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                                : 'bg-status-success/15 text-status-success'
                               : 'bg-status-late/15 text-status-late'
                           }`}
                         >
-                          {mom ? 'MoM Uploaded' : 'MoM Pending'}
+                          {mom ? (mom.is_draft ? 'MoM Draft' : 'MoM Recorded') : 'MoM Pending'}
                         </span>
                       </td>
                       <td className="p-3.5 text-right whitespace-nowrap">

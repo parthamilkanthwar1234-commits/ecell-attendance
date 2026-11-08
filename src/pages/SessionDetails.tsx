@@ -894,11 +894,13 @@ export default function SessionDetails() {
           <span
             className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${
               momDoc
-                ? 'bg-status-success/15 text-status-success border border-status-success/30'
+                ? (momDoc.is_draft
+                    ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                    : 'bg-status-success/15 text-status-success border border-status-success/30')
                 : 'bg-status-late/15 text-status-late border border-status-late/30'
             }`}
           >
-            {momDoc ? 'MoM Recorded' : 'MoM Pending'}
+            {momDoc ? (momDoc.is_draft ? 'Draft MoM' : 'MoM Recorded') : 'MoM Pending'}
           </span>
         </div>
 

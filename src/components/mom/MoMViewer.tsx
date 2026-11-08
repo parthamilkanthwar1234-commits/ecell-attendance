@@ -100,9 +100,9 @@ Verified by: ${mom.verified_by || 'Domain Lead / Master Admin'}
       {/* Action Toolbar (Hidden during browser print) */}
       <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-dark-bg/80 border border-dark-border rounded-xl print:hidden">
         <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-status-success animate-pulse" />
+          <span className={`w-2.5 h-2.5 rounded-full animate-pulse ${mom.is_draft ? 'bg-amber-500' : 'bg-status-success'}`} />
           <span className="text-xs font-bold text-white uppercase tracking-wider">
-            Official Document (v{mom.version || 1})
+            {mom.is_draft ? 'DRAFT' : 'Official Document'} (v{mom.version || 1})
           </span>
           <span className="text-[11px] text-gray-400">
             Recorded by <strong className="text-gray-200">{mom.prepared_by || mom.uploaded_by_name}</strong>
@@ -139,6 +139,29 @@ Verified by: ${mom.verified_by || 'Domain Lead / Master Admin'}
           )}
         </div>
       </div>
+
+      {/* Draft Warning Banner */}
+      {mom.is_draft && (
+        <div className="p-3 bg-amber-500/15 border border-amber-500/30 rounded-xl flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-amber-500/20 flex items-center justify-center flex-shrink-0">
+              <FileText className="h-3.5 w-3.5 text-amber-400" />
+            </div>
+            <div>
+              <span className="text-xs font-bold text-amber-300">Draft Document</span>
+              <p className="text-[10px] text-gray-400">This MoM has not been finalized. Click Edit to complete and publish.</p>
+            </div>
+          </div>
+          {canEdit && (
+            <button
+              onClick={onEdit}
+              className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs cursor-pointer transition-colors flex-shrink-0"
+            >
+              Continue Editing
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ════════════ OFFICIAL DOCUMENT CONTAINER (Template Format) ════════════ */}
       <div
