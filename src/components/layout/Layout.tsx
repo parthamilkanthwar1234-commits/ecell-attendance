@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
-import { Menu, RefreshCw } from 'lucide-react';
+import { Menu, Shield, RefreshCw, CloudCheck, Check } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import Sidebar from './Sidebar';
 import Toast from '../ui/Toast';
@@ -64,39 +64,39 @@ export default function Layout() {
             >
               <Menu className="h-5 w-5" />
             </button>
-            <h2 className="text-lg sm:text-xl font-bold text-white truncate">
+            <h2 className="text-base sm:text-lg font-bold text-white truncate">
               {pageTitle}
             </h2>
           </div>
 
           {/* Right side user badge & Cloud Sync */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             <button
               onClick={handleManualSync}
               disabled={isSyncing}
               title="Click to manually refresh data from Supabase Cloud"
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-dark-bg border border-dark-border text-xs text-gray-300 hover:text-white hover:border-accent-primary/40 transition-all cursor-pointer font-medium"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-dark-bg border border-dark-border text-xs text-gray-300 hover:text-white hover:border-accent-primary/40 transition-all cursor-pointer"
             >
               <RefreshCw
-                className={`h-4 w-4 text-accent-light ${
+                className={`h-3.5 w-3.5 text-accent-light ${
                   isSyncing ? 'animate-spin text-accent-primary' : ''
                 }`}
               />
-              <span className="hidden sm:inline font-semibold text-xs">
+              <span className="hidden sm:inline font-semibold text-[11px]">
                 {isSyncing ? 'Syncing...' : 'Cloud Synced'}
               </span>
             </button>
 
             {user && (
-              <div className="flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl bg-dark-bg border border-dark-border">
-                <div className="w-7 h-7 rounded-full bg-accent-primary/20 text-accent-light flex items-center justify-center font-bold text-xs">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-dark-bg border border-dark-border">
+                <div className="w-6 h-6 rounded-full bg-accent-primary/20 text-accent-light flex items-center justify-center font-bold text-[10px]">
                   {user.full_name.charAt(0)}
                 </div>
                 <div className="hidden sm:block text-left">
-                  <div className="text-sm font-bold text-white truncate max-w-[150px]">
+                  <div className="text-xs font-bold text-white truncate max-w-[140px]">
                     {user.full_name}
                   </div>
-                  <div className="text-[11px] text-gray-400 uppercase tracking-wider font-semibold">
+                  <div className="text-[10px] text-gray-400 uppercase tracking-wider">
                     {user.role === 'co_lead'
                       ? 'Domain Co-Lead'
                       : user.role === 'lead_admin'

@@ -20,52 +20,38 @@
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
-:root {
-  font-size: 16px;
-}
-
-@media (min-width: 1024px) {
-  :root {
-    font-size: 17.5px;
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
   }
-}
 
-@media (min-width: 1440px) {
-  :root {
-    font-size: 19px;
+  body {
+    font-family: var(--font-sans);
+    background-color: var(--color-dark-bg);
+    color: #FFFFFF;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
-}
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
 
-body {
-  font-family: var(--font-sans);
-  background-color: var(--color-dark-bg);
-  color: #FFFFFF;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
+  ::-webkit-scrollbar-track {
+    background: var(--color-dark-bg);
+  }
 
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-dark-border);
+    border-radius: 3px;
+  }
 
-::-webkit-scrollbar-track {
-  background: var(--color-dark-bg);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--color-dark-border);
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-accent-primary);
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-accent-primary);
+  }
 }
 
 /* Animation keyframes */
