@@ -289,17 +289,17 @@ export default function Dashboard() {
           return (
             <div
               key={card.title}
-              className="rounded-xl border border-dark-border bg-dark-card p-4 transition-colors hover:border-dark-hover"
+              className="rounded-xl border border-dark-border bg-dark-card p-5 transition-colors hover:border-dark-hover"
             >
               <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
                   {card.title}
                 </p>
                 <div className={`rounded-lg p-2 ${palette.iconBg}`}>
                   <Icon className={`h-4 w-4 ${palette.text}`} />
                 </div>
               </div>
-              <p className={`mt-3 text-2xl font-bold ${palette.text}`}>
+              <p className={`mt-3 text-3xl font-extrabold ${palette.text}`}>
                 {card.value}
               </p>
             </div>
@@ -314,7 +314,7 @@ export default function Dashboard() {
           {/* a) Today's Attendance Summary */}
           <div className="rounded-xl border border-dark-border bg-dark-card">
             <div className="flex items-center justify-between border-b border-dark-border px-5 py-4">
-              <h2 className="text-sm font-semibold">
+              <h2 className="text-base font-bold text-white">
                 Today&apos;s Attendance Summary
               </h2>
               <Link
@@ -369,7 +369,7 @@ export default function Dashboard() {
 
           {/* b) Weekly Attendance Overview Chart */}
           <div className="rounded-xl border border-dark-border bg-dark-card p-5">
-            <h2 className="mb-4 text-sm font-semibold">
+            <h2 className="mb-4 text-base font-bold text-white">
               Weekly Attendance Overview
             </h2>
             {weeklyChartData.length === 0 ? (
@@ -425,7 +425,7 @@ export default function Dashboard() {
           {/* a) Upcoming Events */}
           <div className="rounded-xl border border-dark-border bg-dark-card">
             <div className="flex items-center justify-between border-b border-dark-border px-5 py-4">
-              <h2 className="text-sm font-semibold">Upcoming Events</h2>
+              <h2 className="text-base font-bold text-white">Upcoming Events</h2>
               <Link
                 to="/meetings"
                 className="flex items-center gap-1 text-xs font-medium text-accent-light hover:text-accent-primary transition-colors"
@@ -478,7 +478,7 @@ export default function Dashboard() {
           {/* b) Recent Activity */}
           <div className="rounded-xl border border-dark-border bg-dark-card">
             <div className="border-b border-dark-border px-5 py-4">
-              <h2 className="flex items-center gap-2 text-sm font-semibold">
+              <h2 className="flex items-center gap-2 text-base font-bold text-white">
                 <Activity className="h-4 w-4 text-accent-light" />
                 Recent Activity
               </h2>
@@ -520,7 +520,7 @@ export default function Dashboard() {
           {/* c) Low Attendance Alert */}
           <div className="rounded-xl border border-dark-border bg-dark-card">
             <div className="border-b border-dark-border px-5 py-4">
-              <h2 className="flex items-center gap-2 text-sm font-semibold">
+              <h2 className="flex items-center gap-2 text-base font-bold text-white">
                 <AlertTriangle className="h-4 w-4 text-status-late" />
                 Low Attendance Alert
               </h2>
@@ -558,7 +558,7 @@ export default function Dashboard() {
 
       {/* ── 3. Monthly Attendance Trend ──────────────────────────────────────── */}
       <div className="rounded-xl border border-dark-border bg-dark-card p-5">
-        <h2 className="mb-4 text-sm font-semibold">
+        <h2 className="mb-4 text-base font-bold text-white">
           Monthly Attendance Trend
         </h2>
         {monthlyChartData.length === 0 ? (
