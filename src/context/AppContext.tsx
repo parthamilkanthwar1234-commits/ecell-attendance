@@ -23,6 +23,15 @@ import {
   DEFAULT_PASSWORD,
 } from '../lib/demoData';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import {
+  CREDENTIALS_VAULT_SESSION_ID,
+  loadLocalVault,
+  saveLocalVault,
+  parseVaultFromSession,
+  mergeVaults,
+  saveUserCredentialToCloud,
+  applyVaultToAccount,
+} from '../lib/credentialsVault';
 
 // Storage keys bumped for clean production slate (only 9 core leads, 0 past sessions)
 const STORAGE_KEYS = {
@@ -151,12 +160,17 @@ function initializeState(): AppState {
   }
 
   // Ensure Vanshika Thakare and Ayush Deshmukh are upgraded to Master Admin in stored data
+  // and apply any locally cached custom passwords immediately
+  const localVault = loadLocalVault();
   const upgradedAccounts = userAccounts.map((acc) => {
-    if (acc.username === 'vanshika.thakare' || acc.username === 'ayush.deshmukh') {
-      return { ...acc, role: 'master_admin' as UserRole };
-    }
-    return acc;
+    const base =
+      acc.username === 'vanshika.thakare' || acc.username === 'ayush.deshmukh'
+        ? { ...acc, role: 'master_admin' as UserRole }
+        : acc;
+    return applyVaultToAccount(base, localVault);
   });
+
+  const cleanSessions = sessions.filter((s) => s.id !== CREDENTIALS_VAULT_SESSION_ID);
 
   const upgradedMembers = members.map((m) => {
     if (m.username === 'vanshika.thakare' || m.username === 'ayush.deshmukh') {
@@ -185,13 +199,17 @@ function initializeState(): AppState {
     user: null,
   });
 
-  if (auth.user && (auth.user.username === 'vanshika.thakare' || auth.user.username === 'ayush.deshmukh')) {
-    auth.user = { ...auth.user, role: 'master_admin' };
+  if (auth.user) {
+    let updatedUser = auth.user;
+    if (updatedUser.username === 'vanshika.thakare' || updatedUser.username === 'ayush.deshmukh') {
+      updatedUser = { ...updatedUser, role: 'master_admin' };
+    }
+    auth.user = applyVaultToAccount(updatedUser, localVault);
   }
 
   return {
     members: upgradedMembers,
-    sessions,
+    sessions: cleanSessions,
     records,
     momDocuments,
     auditLogs,
@@ -241,7 +259,10 @@ function appReducer(state: AppState, action: Action): AppState {
       };
 
     case 'SET_SESSIONS':
-      return { ...state, sessions: action.payload };
+      return {
+        ...state,
+        sessions: action.payload.filter((s) => s.id !== CREDENTIALS_VAULT_SESSION_ID),
+      };
 
     case 'ADD_SESSION':
       if (isSupabaseConfigured() && supabase) {
@@ -429,24 +450,43 @@ function appReducer(state: AppState, action: Action): AppState {
       return { ...state, auditLogs: [action.payload, ...state.auditLogs] };
 
     case 'UPDATE_USER_ACCOUNT': {
-      const updatedAccounts = state.userAccounts.map((u) =>
-        u.id === action.payload.id ? action.payload : u
+      const targetUsername = action.payload.username.toLowerCase();
+      const exists = state.userAccounts.some(
+        (u) => u.id === action.payload.id || u.username.toLowerCase() === targetUsername
       );
+      const updatedAccounts = exists
+        ? state.userAccounts.map((u) =>
+            u.id === action.payload.id || u.username.toLowerCase() === targetUsername
+              ? action.payload
+              : u
+          )
+        : [...state.userAccounts, action.payload];
+      const isCurrentUser =
+        state.auth.user &&
+        (state.auth.user.id === action.payload.id ||
+          state.auth.user.username.toLowerCase() === targetUsername);
       return {
         ...state,
         userAccounts: updatedAccounts,
-        auth:
-          state.auth.user?.id === action.payload.id
-            ? { ...state.auth, user: action.payload }
-            : state.auth,
+        auth: isCurrentUser ? { ...state.auth, user: action.payload } : state.auth,
       };
     }
 
     case 'ADD_USER_ACCOUNT':
       return { ...state, userAccounts: [...state.userAccounts, action.payload] };
 
-    case 'SET_USER_ACCOUNTS':
-      return { ...state, userAccounts: action.payload };
+    case 'SET_USER_ACCOUNTS': {
+      let nextAuth = state.auth;
+      if (state.auth.user) {
+        const refreshedSelf = action.payload.find(
+          (u) => u.username.toLowerCase() === state.auth.user!.username.toLowerCase()
+        );
+        if (refreshedSelf) {
+          nextAuth = { ...state.auth, user: refreshedSelf };
+        }
+      }
+      return { ...state, userAccounts: action.payload, auth: nextAuth };
+    }
 
     case 'UPDATE_SETTINGS':
       return {
@@ -510,6 +550,11 @@ interface AppContextType {
   isLeadMember: (member: Member) => boolean;
   isSelf: (member: Member) => boolean;
   syncFromCloud: () => Promise<boolean>;
+  changeUserPassword: (
+    username: string,
+    newPassword: string,
+    options?: { updatedBy?: string; isCustom?: boolean; mustChange?: boolean }
+  ) => Promise<{ ok: boolean; cloudSynced: boolean; error?: string }>;
   getApplicableMembersForSession: (session: AttendanceSession) => Member[];
   getMemberAttendancePercentage: (memberId: string) => number | null;
   getOverallAttendancePercentage: (domainFilter?: ECellDomain | 'ALL') => number | null;
@@ -533,12 +578,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from('members').select('*'),
       ]);
 
+      // Extract cloud-synced credentials vault if present and exclude it from regular sessions
+      let mergedVault = loadLocalVault();
       if (sessRes.data) {
-        dispatch({ type: 'SET_SESSIONS', payload: sessRes.data });
+        const vaultRow = sessRes.data.find((s: any) => s.id === CREDENTIALS_VAULT_SESSION_ID);
+        if (vaultRow) {
+          const cloudVault = parseVaultFromSession(vaultRow);
+          mergedVault = mergeVaults(mergedVault, cloudVault);
+          saveLocalVault(mergedVault);
+        }
+
+        const realSessions = sessRes.data.filter(
+          (s: any) => s.id !== CREDENTIALS_VAULT_SESSION_ID
+        );
+        dispatch({ type: 'SET_SESSIONS', payload: realSessions });
 
         // Extract cloud-synced MoM documents attached to sessions
         const cloudMoMs: MeetingMinutes[] = [];
-        sessRes.data.forEach((sess: any) => {
+        realSessions.forEach((sess: any) => {
           if (sess.description && sess.description.includes('__ECELL_MOM__:')) {
             try {
               const marker = '__ECELL_MOM__:';
@@ -570,12 +627,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         // Synchronize User Accounts so every cloud member has a valid login across all devices
         const coreAccounts = generateUserAccounts();
         const coreUsernames = new Set(coreAccounts.map((a) => a.username.toLowerCase()));
-        const allAccounts: UserAccount[] = [...coreAccounts];
+        const allAccounts: UserAccount[] = coreAccounts.map((acc) =>
+          applyVaultToAccount(acc, mergedVault)
+        );
 
         mergedMembers.forEach((member) => {
-          const uname = (member.username || member.name.toLowerCase().replace(/\s+/g, '.')).trim();
+          const uname = (member.username || member.name.toLowerCase().replace(/\s+/g, '.')).trim().toLowerCase();
           if (!coreUsernames.has(uname)) {
-            allAccounts.push({
+            const baseAccount: UserAccount = {
               id: `user-${member.id}`,
               full_name: member.name,
               username: uname,
@@ -598,7 +657,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               status: member.status === 'inactive' ? 'disabled' : 'active',
               must_change_password: false,
               created_at: member.created_at || new Date().toISOString(),
-            });
+            };
+            allAccounts.push(applyVaultToAccount(baseAccount, mergedVault));
             coreUsernames.add(uname);
           }
         });
@@ -607,6 +667,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         // Seed cloud database with initial 9 core leads if cloud is empty
         const initialCore = generateAllMembers();
         supabase.from('members').upsert(initialCore).then();
+        const coreAccounts = generateUserAccounts().map((acc) =>
+          applyVaultToAccount(acc, mergedVault)
+        );
+        dispatch({ type: 'SET_USER_ACCOUNTS', payload: coreAccounts });
       }
 
       if (recRes.data) {
@@ -1134,6 +1198,69 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [state.records, state.members]
   );
 
+  const changeUserPassword = useCallback(
+    async (
+      targetUsername: string,
+      newPassword: string,
+      options?: { updatedBy?: string; isCustom?: boolean; mustChange?: boolean }
+    ): Promise<{ ok: boolean; cloudSynced: boolean; error?: string }> => {
+      const cleanUsername = targetUsername.toLowerCase().trim();
+      const trimmedPass = newPassword.trim();
+      if (trimmedPass.length < 6) {
+        return { ok: false, cloudSynced: false, error: 'Password must be at least 6 characters long.' };
+      }
+
+      const now = new Date().toISOString();
+      const entry = {
+        password: trimmedPass,
+        updated_at: now,
+        updated_by: options?.updatedBy || state.auth.user?.full_name || cleanUsername,
+        is_custom: options?.isCustom ?? true,
+        must_change_password: options?.mustChange ?? false,
+      };
+
+      const { cloudSynced, error } = await saveUserCredentialToCloud(cleanUsername, entry);
+
+      const existingAccount =
+        state.userAccounts.find((u) => u.username.toLowerCase() === cleanUsername) ||
+        (state.auth.user?.username.toLowerCase() === cleanUsername ? state.auth.user : undefined);
+
+      if (existingAccount) {
+        const updatedAccount: UserAccount = {
+          ...existingAccount,
+          password: trimmedPass,
+          temp_password: trimmedPass,
+          must_change_password: entry.must_change_password,
+          password_updated_at: now,
+          password_updated_by: entry.updated_by,
+          is_custom_password: entry.is_custom,
+        };
+        dispatch({ type: 'UPDATE_USER_ACCOUNT', payload: updatedAccount });
+
+        dispatch({
+          type: 'ADD_AUDIT_LOG',
+          payload: {
+            id: `audit-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+            actor_id: state.auth.user?.id || existingAccount.id,
+            actor_name: state.auth.user?.full_name || existingAccount.full_name,
+            actor_role: state.auth.user?.role || existingAccount.role,
+            action_type: entry.is_custom ? 'PASSWORD_CHANGED' : 'PASSWORD_RESET',
+            entity_type: 'USER',
+            entity_id: existingAccount.id,
+            member_name: existingAccount.full_name,
+            new_value: entry.is_custom
+              ? 'User updated their login password'
+              : 'Administrator issued a new temporary credential',
+            timestamp: now,
+          },
+        });
+      }
+
+      return { ok: true, cloudSynced, error };
+    },
+    [state.userAccounts, state.auth.user]
+  );
+
   return (
     <AppContext.Provider
       value={{
@@ -1160,6 +1287,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         isLeadMember,
         isSelf,
         syncFromCloud,
+        changeUserPassword,
         getApplicableMembersForSession,
         getSessionMoM,
         getMemberAttendancePercentage,

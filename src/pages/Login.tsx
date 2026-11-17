@@ -13,6 +13,12 @@ import { useApp } from '../context/AppContext';
 import { DEFAULT_PASSWORD } from '../lib/demoData';
 import { UserAccount } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import {
+  fetchCloudVault,
+  applyVaultToAccount,
+  verifyAccountPassword,
+} from '../lib/credentialsVault';
+import { ChangePasswordModal } from '../components/auth/ChangePasswordModal';
 
 export default function Login() {
   const { state, dispatch, addToast, syncFromCloud } = useApp();
@@ -25,6 +31,7 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
   // Sync cloud data on login mount so roster and credentials are up to date
   useEffect(() => {
@@ -142,14 +149,12 @@ export default function Login() {
         return;
       }
 
-      // Verify Password (strictly against user's assigned unique credentials)
-      const validPasswords = [
-        matchedUser.password,
-        matchedUser.temp_password,
-        DEFAULT_PASSWORD,
-      ].filter(Boolean);
+      // Fetch latest cloud password vault directly to avoid stale state during login
+      const latestVault = await fetchCloudVault();
+      matchedUser = applyVaultToAccount(matchedUser, latestVault);
 
-      if (!validPasswords.includes(password)) {
+      // Verify Password strictly against user's active credentials
+      if (!verifyAccountPassword(matchedUser, password)) {
         addToast({
           type: 'error',
           title: 'Invalid Password',
@@ -281,6 +286,14 @@ export default function Login() {
                 />
                 <span className="text-[11px]">Remember login session</span>
               </label>
+
+              <button
+                type="button"
+                onClick={() => setIsChangePasswordOpen(true)}
+                className="text-[11px] text-accent-light hover:text-white font-semibold hover:underline transition-colors cursor-pointer"
+              >
+                Change Password
+              </button>
             </div>
 
             <button
@@ -311,6 +324,12 @@ export default function Login() {
           Entrepreneurship Cell · JSPM Rajarshi Shahu College of Engineering, Pune
         </p>
       </div>
+
+      <ChangePasswordModal
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
+        initialUsername={username}
+      />
     </div>
   );
 }

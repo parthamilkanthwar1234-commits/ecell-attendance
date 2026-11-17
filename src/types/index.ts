@@ -142,6 +142,7 @@ export interface AuditLog {
     | 'SESSION_UPDATED'
     | 'ROLE_CHANGED'
     | 'PASSWORD_RESET'
+    | 'PASSWORD_CHANGED'
     | 'MEMBER_ADDED';
   entity_type: 'ATTENDANCE' | 'SESSION' | 'MOM' | 'USER' | 'MEMBER';
   entity_id: string;
@@ -166,6 +167,9 @@ export interface UserAccount {
   status: 'active' | 'disabled';
   must_change_password?: boolean;
   temp_password?: string;
+  password_updated_at?: string;
+  password_updated_by?: string;
+  is_custom_password?: boolean;
   last_login?: string;
   created_at: string;
 }

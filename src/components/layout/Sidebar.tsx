@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   Layers,
   QrCode,
+  KeyRound,
   X
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -24,7 +25,11 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
 }
 
-export default function Sidebar() {
+interface SidebarProps {
+  onOpenChangePassword?: () => void;
+}
+
+export default function Sidebar({ onOpenChangePassword }: SidebarProps) {
   const { state, dispatch, isMoMScribe } = useApp();
   const navigate = useNavigate();
   const location = useLocation();
@@ -209,13 +214,25 @@ export default function Sidebar() {
                 </div>
               </div>
 
-              <button
-                onClick={handleLogout}
-                className="p-1.5 rounded-lg text-gray-400 hover:text-status-absent hover:bg-status-absent/10 transition-colors cursor-pointer flex-shrink-0"
-                title="Log Out"
-              >
-                <LogOut className="h-3.5 w-3.5" />
-              </button>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {onOpenChangePassword && (
+                  <button
+                    onClick={onOpenChangePassword}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-accent-light hover:bg-accent-primary/10 transition-colors cursor-pointer"
+                    title="Change Password"
+                  >
+                    <KeyRound className="h-3.5 w-3.5" />
+                  </button>
+                )}
+
+                <button
+                  onClick={handleLogout}
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-status-absent hover:bg-status-absent/10 transition-colors cursor-pointer"
+                  title="Log Out"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
           </div>
         )}

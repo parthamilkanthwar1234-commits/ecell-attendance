@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
-import { Menu, Shield, RefreshCw, CloudCheck, Check } from 'lucide-react';
+import { Menu, Shield, RefreshCw, CloudCheck, Check, KeyRound } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import Sidebar from './Sidebar';
 import Toast from '../ui/Toast';
+import { ChangePasswordModal } from '../auth/ChangePasswordModal';
 
 const pageTitles: Record<string, string> = {
   '/dashboard': 'Dashboard Overview',
@@ -23,6 +24,7 @@ export default function Layout() {
   const { state, dispatch, syncFromCloud, addToast, isMoMScribe } = useApp();
   const location = useLocation();
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
   const handleManualSync = async () => {
     setIsSyncing(true);
@@ -50,7 +52,7 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen bg-dark-bg text-white overflow-hidden">
-      <Sidebar />
+      <Sidebar onOpenChangePassword={() => setIsChangePasswordOpen(true)} />
 
       {/* Main content area */}
       <div className="flex flex-1 flex-col min-w-0">
@@ -88,6 +90,19 @@ export default function Layout() {
             </button>
 
             {user && (
+              <button
+                onClick={() => setIsChangePasswordOpen(true)}
+                title="Change your login password"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-dark-bg border border-dark-border text-xs text-gray-300 hover:text-white hover:border-accent-primary/40 transition-all cursor-pointer"
+              >
+                <KeyRound className="h-3.5 w-3.5 text-accent-light" />
+                <span className="hidden md:inline font-semibold text-[11px]">
+                  Change Password
+                </span>
+              </button>
+            )}
+
+            {user && (
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-dark-bg border border-dark-border">
                 <div className="w-6 h-6 rounded-full bg-accent-primary/20 text-accent-light flex items-center justify-center font-bold text-[10px]">
                   {user.full_name.charAt(0)}
@@ -116,6 +131,13 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
+      {/* Change Password Modal (accessible to all logged-in users) */}
+      <ChangePasswordModal
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
+        currentUser={user}
+      />
 
       {/* Global Toasts */}
       <Toast />

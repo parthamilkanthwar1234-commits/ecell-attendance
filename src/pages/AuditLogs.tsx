@@ -137,6 +137,8 @@ export default function AuditLogs() {
             <option value="MOM_UPLOADED">MoM Uploaded</option>
             <option value="MOM_REPLACED">MoM Replaced</option>
             <option value="ROLE_CHANGED">Role Changed</option>
+            <option value="PASSWORD_CHANGED">Password Changed</option>
+            <option value="PASSWORD_RESET">Password Reset</option>
           </select>
         </div>
       </div>

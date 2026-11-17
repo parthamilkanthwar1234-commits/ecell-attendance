@@ -19,6 +19,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { UserAccount, UserRole, ECellDomain } from '../types';
 import { formatDate, generateId } from '../lib/utils';
+import { DEFAULT_PASSWORD } from '../lib/demoData';
 import Modal from '../components/ui/Modal';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
 
@@ -37,11 +38,20 @@ const DOMAINS_LIST: ECellDomain[] = [
 ];
 
 export default function UserManagement() {
-  const { state, dispatch, addToast, isMasterAdmin, isPrimaryMasterAdmin, syncFromCloud } = useApp();
+  const {
+    state,
+    dispatch,
+    addToast,
+    isMasterAdmin,
+    isPrimaryMasterAdmin,
+    syncFromCloud,
+    changeUserPassword,
+  } = useApp();
   const { userAccounts, settings } = state;
 
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState('ALL');
+  const [passwordFilter, setPasswordFilter] = useState<'ALL' | 'CUSTOM' | 'DEFAULT'>('ALL');
   const [isSyncing, setIsSyncing] = useState(false);
 
   // Auto-sync on mount
@@ -73,9 +83,16 @@ export default function UserManagement() {
 
       const matchRole = roleFilter === 'ALL' || account.role === roleFilter;
 
-      return matchSearch && matchRole;
+      const activePass = account.password || account.temp_password || DEFAULT_PASSWORD;
+      const isStillDefault = !account.is_custom_password && activePass === DEFAULT_PASSWORD;
+      const matchPassword =
+        passwordFilter === 'ALL' ||
+        (passwordFilter === 'CUSTOM' && !!account.is_custom_password) ||
+        (passwordFilter === 'DEFAULT' && isStillDefault);
+
+      return matchSearch && matchRole && matchPassword;
     });
-  }, [userAccounts, searchTerm, roleFilter]);
+  }, [userAccounts, searchTerm, roleFilter, passwordFilter]);
 
   if (!isMasterAdmin()) {
     return (
@@ -157,8 +174,8 @@ export default function UserManagement() {
     });
   };
 
-  // Generate / Reset Temporary Password
-  const handleResetPassword = (targetUser: UserAccount) => {
+  // Generate / Reset Temporary Password (synced immediately to Supabase Cloud)
+  const handleResetPassword = async (targetUser: UserAccount) => {
     if (targetUser.username === 'parth.amilkanthwar' && !isPrimaryMasterAdmin()) {
       addToast({
         type: 'error',
@@ -170,36 +187,27 @@ export default function UserManagement() {
 
     const generatedPass = `RSCOE@${Math.random().toString(36).slice(-6).toUpperCase()}!`;
 
-    const updated: UserAccount = {
-      ...targetUser,
-      temp_password: generatedPass,
-      must_change_password: true,
-    };
-
-    dispatch({ type: 'UPDATE_USER_ACCOUNT', payload: updated });
-
-    dispatch({
-      type: 'ADD_AUDIT_LOG',
-      payload: {
-        id: `audit-${Date.now()}`,
-        actor_id: state.auth.user?.id || 'admin',
-        actor_name: state.auth.user?.full_name || 'Master Admin',
-        actor_role: state.auth.user?.role || 'master_admin',
-        action_type: 'PASSWORD_RESET',
-        entity_type: 'USER',
-        entity_id: targetUser.id,
-        member_name: targetUser.full_name,
-        new_value: 'Generated one-time temporary credential',
-        timestamp: new Date().toISOString(),
-      },
+    const result = await changeUserPassword(targetUser.username, generatedPass, {
+      updatedBy: state.auth.user?.full_name || 'Master Admin',
+      isCustom: false,
+      mustChange: true,
     });
+
+    if (!result.ok) {
+      addToast({
+        type: 'error',
+        title: 'Reset Failed',
+        message: result.error || 'Could not reset password.',
+      });
+      return;
+    }
 
     setTempPasswordDisplay(generatedPass);
     setSelectedUserForReset(targetUser);
   };
 
   // Create User
-  const handleCreateUser = (e: React.FormEvent) => {
+  const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     const formattedUsername = newUser.username.toLowerCase().trim().replace(/\s+/g, '.');
 
@@ -220,11 +228,17 @@ export default function UserManagement() {
       email: newUser.email || `${formattedUsername}@ecell.jspmrscoe.in`,
       status: 'active',
       must_change_password: true,
+      password: tempPassword,
       temp_password: tempPassword,
       created_at: new Date().toISOString(),
     };
 
     dispatch({ type: 'ADD_USER_ACCOUNT', payload: created });
+    await changeUserPassword(formattedUsername, tempPassword, {
+      updatedBy: state.auth.user?.full_name || 'Master Admin',
+      isCustom: false,
+      mustChange: true,
+    });
 
     addToast({
       type: 'success',
@@ -309,7 +323,7 @@ export default function UserManagement() {
           />
         </div>
 
-        <div className="flex items-center gap-3 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
           <select
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value)}
@@ -322,6 +336,20 @@ export default function UserManagement() {
             <option value="lead_admin">Lead Admins (Domain Leads)</option>
             <option value="co_lead">Domain Co-Leads</option>
             <option value="member">General Body Members</option>
+          </select>
+
+          <select
+            value={passwordFilter}
+            onChange={(e) => setPasswordFilter(e.target.value as 'ALL' | 'CUSTOM' | 'DEFAULT')}
+            className="px-3 py-2 bg-dark-bg border border-dark-border rounded-lg text-xs text-white focus:outline-none focus:border-accent-primary cursor-pointer w-full sm:w-auto"
+          >
+            <option value="ALL">All Passwords</option>
+            <option value="CUSTOM">
+              Custom Password Set ({userAccounts.filter((u) => u.is_custom_password).length})
+            </option>
+            <option value="DEFAULT">
+              Still Default ({userAccounts.filter((u) => !u.is_custom_password && (u.password || u.temp_password || DEFAULT_PASSWORD) === DEFAULT_PASSWORD).length})
+            </option>
           </select>
         </div>
       </div>
@@ -336,7 +364,7 @@ export default function UserManagement() {
                 <th className="p-3.5">Assigned Domain</th>
                 <th className="p-3.5">Security Role</th>
                 <th className="p-3.5">Status</th>
-                <th className="p-3.5">Temporary Credential</th>
+                <th className="p-3.5">Login Password</th>
                 <th className="p-3.5 text-right">Administrative Actions</th>
               </tr>
             </thead>
@@ -416,13 +444,63 @@ export default function UserManagement() {
                     </td>
 
                     <td className="p-3.5">
-                      {account.temp_password ? (
-                        <span className="font-mono text-[11px] text-gray-400 bg-dark-bg px-2 py-1 rounded border border-dark-border">
-                          {account.temp_password}
+                      {isMasterParth && !isPrimaryMasterAdmin() ? (
+                        <span className="font-mono text-[11px] text-gray-500 bg-dark-bg px-2 py-1 rounded border border-dark-border">
+                          •••••••••••• (Protected)
                         </span>
-                      ) : (
-                        <span className="text-gray-500 text-[11px]">Password Set</span>
-                      )}
+                      ) : (() => {
+                        const activePass =
+                          account.password || account.temp_password || DEFAULT_PASSWORD;
+                        const isCustom = !!account.is_custom_password;
+                        const isReset = !isCustom && !!account.must_change_password;
+                        const isDefault = !isCustom && !isReset && activePass === DEFAULT_PASSWORD;
+
+                        return (
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className={`font-mono text-[11px] px-2 py-1 rounded border ${
+                                  isCustom
+                                    ? 'text-status-success bg-status-success/10 border-status-success/30 font-semibold'
+                                    : isReset
+                                    ? 'text-amber-300 bg-amber-500/10 border-amber-500/30 font-semibold'
+                                    : 'text-gray-300 bg-dark-bg border-dark-border'
+                                }`}
+                              >
+                                {activePass}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(activePass);
+                                  addToast({
+                                    type: 'info',
+                                    title: 'Password Copied',
+                                    message: `Copied password for ${account.full_name}.`,
+                                  });
+                                }}
+                                className="p-1 rounded bg-dark-bg hover:bg-dark-hover border border-dark-border text-gray-400 hover:text-white cursor-pointer"
+                                title="Copy password"
+                              >
+                                <Copy className="h-3 w-3" />
+                              </button>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[10px]">
+                              {isCustom ? (
+                                <span className="text-status-success font-semibold">
+                                  Custom{account.password_updated_at ? ` · ${formatDate(account.password_updated_at)}` : ''}
+                                </span>
+                              ) : isReset ? (
+                                <span className="text-amber-400 font-semibold">Admin Reset</span>
+                              ) : isDefault ? (
+                                <span className="text-gray-500">Default Password</span>
+                              ) : (
+                                <span className="text-accent-light">Core Lead Credential</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </td>
 
                     <td className="p-3.5 text-right whitespace-nowrap">
