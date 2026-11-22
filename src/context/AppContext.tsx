@@ -417,15 +417,25 @@ function appReducer(state: AppState, action: Action): AppState {
         entity_type: 'MOM',
         entity_id: action.payload.id,
         session_id: action.payload.session_id,
-        new_value: `Replaced MoM document: ${action.payload.document_name} (v${action.payload.version})`,
+        new_value: `Updated MoM document: ${action.payload.document_name} (v${action.payload.version || 1})`,
         timestamp: new Date().toISOString(),
       };
 
+      const exists = state.momDocuments.some(
+        (m) => m.id === action.payload.id || m.session_id === action.payload.session_id
+      );
+
+      const updatedMomDocs = exists
+        ? state.momDocuments.map((m) =>
+            m.id === action.payload.id || m.session_id === action.payload.session_id
+              ? action.payload
+              : m
+          )
+        : [action.payload, ...state.momDocuments];
+
       return {
         ...state,
-        momDocuments: state.momDocuments.map((m) =>
-          m.id === action.payload.id ? action.payload : m
-        ),
+        momDocuments: updatedMomDocs,
         auditLogs: [audit, ...state.auditLogs],
       };
     }

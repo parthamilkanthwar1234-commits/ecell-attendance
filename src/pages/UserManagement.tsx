@@ -592,7 +592,15 @@ export default function UserManagement() {
         title="Provision Core Committee Account"
         size="md"
       >
-        <form onSubmit={handleCreateUser} className="space-y-4">
+        <form
+          onSubmit={handleCreateUser}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
+              e.preventDefault();
+            }
+          }}
+          className="space-y-4"
+        >
           <div>
             <label className="block text-xs font-semibold text-gray-400 mb-1">Full Name *</label>
             <input

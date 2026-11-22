@@ -26,6 +26,7 @@ import {
   QrCode,
   Smartphone,
   Zap,
+  Edit3,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import {
@@ -368,11 +369,17 @@ export default function SessionDetails() {
     try {
       // 1. Pack into session description for instant Supabase cloud synchronization
       const momPayload = JSON.stringify(newMoM);
+      const cleanDesc = session.description && session.description.includes('__ECELL_MOM__:')
+        ? session.description.split('__ECELL_MOM__:')[0].trim()
+        : (session.description || '').trim();
+
+      const updatedDescription = cleanDesc
+        ? `${cleanDesc}\n\n__ECELL_MOM__:${momPayload}`
+        : `__ECELL_MOM__:${momPayload}`;
+
       const updatedSession: AttendanceSession = {
         ...session,
-        description: session.description && session.description.split('__ECELL_MOM__:')[0].trim()
-          ? `${session.description.split('__ECELL_MOM__:')[0].trim()}\n\n__ECELL_MOM__:${momPayload}`
-          : `__ECELL_MOM__:${momPayload}`,
+        description: updatedDescription,
         updated_at: new Date().toISOString(),
       };
 
@@ -388,7 +395,7 @@ export default function SessionDetails() {
       }
 
       dispatch({ type: 'UPDATE_SESSION', payload: updatedSession });
-      dispatch({ type: momDoc ? 'UPDATE_MOM' : 'ADD_MOM', payload: newMoM });
+      dispatch({ type: 'UPDATE_MOM', payload: newMoM });
 
       addToast({
         type: 'success',
@@ -399,11 +406,28 @@ export default function SessionDetails() {
       console.error('Error saving MoM:', err);
       addToast({
         type: 'error',
-        title: 'Error Saving MoM',
-        message: 'Could not sync MoM to cloud. Please check network.',
+        title: 'Save Failed',
+        message: 'Could not sync MoM with cloud. Please check network.',
       });
-      throw err;
     }
+  };
+
+  // Quick task status change handler (from Section D or MoMViewer)
+  const handleUpdateTaskStatus = async (
+    itemId: string,
+    newStatus: 'Pending' | 'In Progress' | 'Completed'
+  ) => {
+    if (!momDoc || !session) return;
+    const updatedActionItems = (momDoc.action_items || []).map((item) =>
+      item.id === itemId ? { ...item, status: newStatus } : item
+    );
+    const updatedMoM: MeetingMinutes = {
+      ...momDoc,
+      action_items: updatedActionItems,
+      updated_at: new Date().toISOString(),
+      version: (momDoc.version || 1) + 1,
+    };
+    await handleSaveMoMDocument(updatedMoM);
   };
 
   // Delete session handler (Only session creator or Master Admin)
@@ -908,6 +932,7 @@ export default function SessionDetails() {
             session={session}
             canEdit={userCanUploadMoM}
             onEdit={() => setIsMoMModalOpen(true)}
+            onUpdateTaskStatus={handleUpdateTaskStatus}
           />
         ) : (
           <div className="p-8 text-center bg-dark-bg rounded-xl border border-dashed border-dark-border space-y-3">
@@ -943,46 +968,83 @@ export default function SessionDetails() {
       {/* ─── SECTION D: ACTION ITEMS ─────────────────────────────────────────────── */}
       {momDoc && momDoc.action_items && momDoc.action_items.length > 0 && (
         <div className="bg-dark-card border border-dark-border rounded-xl p-6 shadow-sm space-y-4">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-gray-400 flex items-center gap-2">
-            <CheckCircle2 className="h-4 w-4 text-accent-light" />
-            <span>Section D: Meeting Action Items ({momDoc.action_items.length})</span>
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-gray-400 flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-accent-light" />
+              <span>Section D: Meeting Action Items ({momDoc.action_items.length})</span>
+            </h2>
+            {userCanUploadMoM && (
+              <button
+                type="button"
+                onClick={() => setIsMoMModalOpen(true)}
+                className="inline-flex items-center gap-1.5 text-xs text-accent-light hover:text-white font-medium cursor-pointer transition-colors"
+              >
+                <Edit3 className="h-3.5 w-3.5" />
+                <span>Edit All Action Items</span>
+              </button>
+            )}
+          </div>
 
           <div className="space-y-2">
             {momDoc.action_items.map((item) => (
               <div
                 key={item.id}
-                className="p-3 bg-dark-bg rounded-lg border border-dark-border flex items-center justify-between gap-3"
+                className="p-3 bg-dark-bg rounded-lg border border-dark-border flex flex-col sm:flex-row sm:items-center justify-between gap-3"
               >
                 <div className="flex items-center gap-3">
                   <div
-                    className={`w-2 h-2 rounded-full ${
+                    className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
                       item.status === 'Completed'
-                        ? 'bg-status-success'
+                        ? 'bg-status-success shadow-sm shadow-status-success/50'
                         : item.status === 'In Progress'
-                        ? 'bg-status-late'
+                        ? 'bg-status-late shadow-sm shadow-status-late/50'
                         : 'bg-gray-500'
                     }`}
                   />
                   <div>
                     <span className="text-xs font-semibold text-white block">{item.task}</span>
-                    <span className="text-[10px] text-gray-500">
-                      Assigned to: {item.assigned_to_name} · Due: {item.due_date}
+                    <span className="text-[11px] text-gray-400">
+                      Assigned to: <strong className="text-gray-300">{item.assigned_to_name}</strong> · Due: <strong className="text-gray-300 font-mono">{item.due_date}</strong>
                     </span>
                   </div>
                 </div>
 
-                <span
-                  className={`text-[10px] px-2 py-0.5 rounded font-bold ${
-                    item.status === 'Completed'
-                      ? 'bg-status-success/15 text-status-success'
-                      : item.status === 'In Progress'
-                      ? 'bg-status-late/15 text-status-late'
-                      : 'bg-dark-card text-gray-400'
-                  }`}
-                >
-                  {item.status.toUpperCase()}
-                </span>
+                <div className="flex items-center gap-2 self-end sm:self-auto">
+                  {userCanUploadMoM ? (
+                    <select
+                      value={item.status}
+                      onChange={(e) =>
+                        handleUpdateTaskStatus(
+                          item.id,
+                          e.target.value as 'Pending' | 'In Progress' | 'Completed'
+                        )
+                      }
+                      className={`text-xs px-2.5 py-1 rounded-lg font-bold border cursor-pointer focus:outline-none transition-colors ${
+                        item.status === 'Completed'
+                          ? 'bg-status-success/20 text-status-success border-status-success/40'
+                          : item.status === 'In Progress'
+                          ? 'bg-status-late/20 text-status-late border-status-late/40'
+                          : 'bg-dark-card text-gray-300 border-dark-border'
+                      }`}
+                    >
+                      <option value="Pending" className="bg-[#171c26] text-gray-300">Pending</option>
+                      <option value="In Progress" className="bg-[#171c26] text-amber-400">In Progress</option>
+                      <option value="Completed" className="bg-[#171c26] text-status-success">Completed</option>
+                    </select>
+                  ) : (
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded font-bold ${
+                        item.status === 'Completed'
+                          ? 'bg-status-success/15 text-status-success'
+                          : item.status === 'In Progress'
+                          ? 'bg-status-late/15 text-status-late'
+                          : 'bg-dark-card text-gray-400'
+                      }`}
+                    >
+                      {item.status.toUpperCase()}
+                    </span>
+                  )}
+                </div>
               </div>
             ))}
           </div>

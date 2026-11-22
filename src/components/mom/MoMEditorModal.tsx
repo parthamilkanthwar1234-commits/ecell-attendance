@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   FileText,
   Plus,
@@ -16,6 +16,14 @@ import {
 import Modal from '../ui/Modal';
 import { MeetingMinutes, ActionItem, AttendanceSession } from '../../types';
 import { useApp } from '../../context/AppContext';
+
+export const normalizeActionItemStatus = (status?: string): 'Pending' | 'In Progress' | 'Completed' => {
+  if (!status) return 'Pending';
+  const s = status.trim().toLowerCase();
+  if (s === 'completed' || s === 'done') return 'Completed';
+  if (s === 'in progress' || s === 'in-progress' || s === 'ongoing') return 'In Progress';
+  return 'Pending';
+};
 
 interface MoMEditorModalProps {
   isOpen: boolean;
@@ -40,12 +48,14 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
   const [date, setDate] = useState(existingMoM?.date || session.date);
   const [time, setTime] = useState(existingMoM?.time || `${session.start_time} - ${session.end_time}`);
   const [venue, setVenue] = useState(existingMoM?.venue || session.location || 'Conference Room A');
-  const [conductedBy, setConductedBy] = useState(existingMoM?.conducted_by || session.created_by_name);
+  const [conductedBy, setConductedBy] = useState(existingMoM?.conducted_by || session.created_by_name || 'Domain Lead');
   const [preparedBy, setPreparedBy] = useState(existingMoM?.prepared_by || user?.full_name || 'Domain Scribe');
 
   const [attendancePresent, setAttendancePresent] = useState(existingMoM?.attendance_present || '');
   const isRandomMeeting = session.session_type === 'Random Meeting' || !!session.is_random_meeting;
-  const [attendanceAbsent, setAttendanceAbsent] = useState(existingMoM?.attendance_absent || (isRandomMeeting ? 'None (Random Meeting / Open QR Attendance)' : ''));
+  const [attendanceAbsent, setAttendanceAbsent] = useState(
+    existingMoM?.attendance_absent || (isRandomMeeting ? 'None (Random Meeting / Open QR Attendance)' : '')
+  );
 
   const [agendaDiscussion, setAgendaDiscussion] = useState<string[]>(
     existingMoM?.agenda_discussion && existingMoM.agenda_discussion.length > 0
@@ -61,7 +71,11 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
 
   const [actionItems, setActionItems] = useState<ActionItem[]>(
     existingMoM?.action_items && existingMoM.action_items.length > 0
-      ? existingMoM.action_items
+      ? existingMoM.action_items.map((item, idx) => ({
+          ...item,
+          id: item.id || `act-${Date.now()}-${idx + 1}`,
+          status: normalizeActionItemStatus(item.status),
+        }))
       : [
           {
             id: `act-${Date.now()}-1`,
@@ -85,42 +99,72 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Sync state if existingMoM changes
+  const wasOpenRef = useRef(false);
+  const loadedSessionIdRef = useRef<string | null>(null);
+
+  // Sync state ONLY when modal transitions from closed to open or when session ID changes.
+  // NEVER overwrite active user edits during background polling / cloud sync!
   useEffect(() => {
-    if (existingMoM) {
-      setDomain(existingMoM.domain || session.domain);
-      setDate(existingMoM.date || session.date);
-      setTime(existingMoM.time || `${session.start_time} - ${session.end_time}`);
-      setVenue(existingMoM.venue || session.location);
-      setConductedBy(existingMoM.conducted_by || session.created_by_name);
-      setPreparedBy(existingMoM.prepared_by || user?.full_name || 'Domain Scribe');
-      setAttendancePresent(existingMoM.attendance_present || '');
-      setAttendanceAbsent(existingMoM.attendance_absent || '');
+    if (isOpen && (!wasOpenRef.current || loadedSessionIdRef.current !== session.id)) {
+      wasOpenRef.current = true;
+      loadedSessionIdRef.current = session.id;
+
+      setDomain(existingMoM?.domain || session.domain);
+      setDate(existingMoM?.date || session.date);
+      setTime(existingMoM?.time || `${session.start_time} - ${session.end_time}`);
+      setVenue(existingMoM?.venue || session.location || 'Conference Room A');
+      setConductedBy(existingMoM?.conducted_by || session.created_by_name || 'Domain Lead');
+      setPreparedBy(existingMoM?.prepared_by || user?.full_name || 'Domain Scribe');
+      setAttendancePresent(existingMoM?.attendance_present || '');
+
+      const isRandom = session.session_type === 'Random Meeting' || !!session.is_random_meeting;
+      setAttendanceAbsent(
+        existingMoM?.attendance_absent || (isRandom ? 'None (Random Meeting / Open QR Attendance)' : '')
+      );
+
       setAgendaDiscussion(
-        existingMoM.agenda_discussion && existingMoM.agenda_discussion.length > 0
-          ? existingMoM.agenda_discussion
+        existingMoM?.agenda_discussion && existingMoM.agenda_discussion.length > 0
+          ? [...existingMoM.agenda_discussion]
           : ['']
       );
+
       setKeyDecisions(
-        existingMoM.key_decisions && existingMoM.key_decisions.length > 0
-          ? existingMoM.key_decisions
+        existingMoM?.key_decisions && existingMoM.key_decisions.length > 0
+          ? [...existingMoM.key_decisions]
           : ['']
       );
+
       setActionItems(
-        existingMoM.action_items && existingMoM.action_items.length > 0
-          ? existingMoM.action_items
-          : []
+        existingMoM?.action_items && existingMoM.action_items.length > 0
+          ? existingMoM.action_items.map((item, idx) => ({
+              ...item,
+              id: item.id || `act-${Date.now()}-${idx + 1}`,
+              status: normalizeActionItemStatus(item.status),
+            }))
+          : [
+              {
+                id: `act-${Date.now()}-1`,
+                task: '',
+                assigned_to_name: '',
+                due_date: session.date,
+                status: 'Pending',
+              },
+            ]
       );
+
       setUpdatesRequirements(
-        existingMoM.updates_requirements && existingMoM.updates_requirements.length > 0
-          ? existingMoM.updates_requirements
+        existingMoM?.updates_requirements && existingMoM.updates_requirements.length > 0
+          ? [...existingMoM.updates_requirements]
           : ['']
       );
-      setNextMeetingDate(existingMoM.next_meeting_date || '');
-      setNextMeetingAgenda(existingMoM.next_meeting_agenda || '');
-      setVerifiedBy(existingMoM.verified_by || 'Parth Amilkanthwar (Master Admin)');
+
+      setNextMeetingDate(existingMoM?.next_meeting_date || '');
+      setNextMeetingAgenda(existingMoM?.next_meeting_agenda || '');
+      setVerifiedBy(existingMoM?.verified_by || 'Parth Amilkanthwar (Master Admin)');
+    } else if (!isOpen) {
+      wasOpenRef.current = false;
     }
-  }, [existingMoM, session, user]);
+  }, [isOpen, session.id]);
 
   // One-Click Auto-Fill from Session Attendance
   const handleAutoFillFromSession = () => {
@@ -206,13 +250,27 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
   const handleUpdateActionItem = (index: number, field: keyof ActionItem, value: any) => {
     setActionItems((prev) => {
       const copy = [...prev];
-      copy[index] = { ...copy[index], [field]: value };
+      copy[index] = {
+        ...copy[index],
+        [field]: field === 'status' ? normalizeActionItemStatus(value) : value,
+      };
       return copy;
     });
   };
 
   const handleRemoveActionItem = (index: number) => {
     setActionItems((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // Prevent accidental form submission when pressing Enter inside text inputs
+  const handleFormKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
+    if (e.key === 'Enter') {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'TEXTAREA') {
+        return; // Allow standard multiline entry in textareas
+      }
+      e.preventDefault();
+    }
   };
 
   // Submit Handler
@@ -223,7 +281,15 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
     const cleanAgenda = agendaDiscussion.map((s) => s.trim()).filter(Boolean);
     const cleanDecisions = keyDecisions.map((s) => s.trim()).filter(Boolean);
     const cleanUpdates = updatesRequirements.map((s) => s.trim()).filter(Boolean);
-    const cleanActionItems = actionItems.filter((a) => a.task.trim().length > 0);
+    const cleanActionItems: ActionItem[] = actionItems
+      .filter((a) => a.task && a.task.trim().length > 0)
+      .map((a, idx) => ({
+        id: a.id || `act-${Date.now()}-${idx + 1}`,
+        task: a.task.trim(),
+        assigned_to_name: a.assigned_to_name?.trim() || 'Unassigned',
+        due_date: a.due_date?.trim() || session.date,
+        status: normalizeActionItemStatus(a.status),
+      }));
 
     const newMoM: MeetingMinutes = {
       id: existingMoM?.id || `mom-${session.id}`,
@@ -283,7 +349,11 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
       title={existingMoM ? 'Edit Minutes of Meeting (MoM)' : 'Create Official Minutes of Meeting (MoM)'}
       size="xl"
     >
-      <form onSubmit={handleSubmit} className="space-y-6 text-xs max-h-[80vh] overflow-y-auto px-1 pr-2">
+      <form
+        onSubmit={handleSubmit}
+        onKeyDown={handleFormKeyDown}
+        className="space-y-6 text-xs max-h-[80vh] overflow-y-auto px-1 pr-2"
+      >
         {/* Banner with Auto-fill helper */}
         <div className="p-3.5 bg-accent-primary/10 border border-accent-primary/30 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
@@ -552,8 +622,8 @@ export const MoMEditorModal: React.FC<MoMEditorModalProps> = ({
                   <div className="flex-1">
                     <label className="block text-[10px] text-gray-400 mb-0.5">Status</label>
                     <select
-                      value={item.status}
-                      onChange={(e) => handleUpdateActionItem(idx, 'status', e.target.value)}
+                      value={normalizeActionItemStatus(item.status)}
+                      onChange={(e) => handleUpdateActionItem(idx, 'status', normalizeActionItemStatus(e.target.value))}
                       className="w-full px-2 py-1 bg-dark-bg border border-dark-border rounded text-white focus:outline-none focus:border-accent-primary text-[11px]"
                     >
                       <option value="Pending">Pending</option>

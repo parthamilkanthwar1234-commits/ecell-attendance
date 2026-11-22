@@ -7,6 +7,7 @@ interface ModalProps {
   title: string;
   children: React.ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
+  preventEnterSubmit?: boolean;
 }
 
 const sizeClasses: Record<NonNullable<ModalProps['size']>, string> = {
@@ -23,6 +24,7 @@ export default function Modal({
   title,
   children,
   size = 'md',
+  preventEnterSubmit = true,
 }: ModalProps) {
   const [visible, setVisible] = useState(false);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -58,6 +60,21 @@ export default function Modal({
     [onClose]
   );
 
+  const handleDialogKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    // Intercept Enter key inside modal single-line inputs to prevent premature auto-submit
+    if (preventEnterSubmit && e.key === 'Enter') {
+      const target = e.target as HTMLElement;
+      if (
+        target &&
+        target.tagName === 'INPUT' &&
+        target.getAttribute('type') !== 'submit' &&
+        target.getAttribute('data-allow-enter-submit') !== 'true'
+      ) {
+        e.preventDefault();
+      }
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -75,6 +92,7 @@ export default function Modal({
       aria-label={title}
     >
       <div
+        onKeyDown={handleDialogKeyDown}
         className={`
           w-full ${sizeClasses[size]} bg-dark-card border border-dark-border rounded-2xl shadow-2xl
           transition-all duration-200 ease-out

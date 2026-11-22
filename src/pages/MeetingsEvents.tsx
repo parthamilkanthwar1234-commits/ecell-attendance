@@ -818,7 +818,15 @@ export default function MeetingsEvents() {
         title={editingSession ? `Edit Session: ${editingSession.name}` : 'Create New Attendance Session'}
         size="lg"
       >
-        <form onSubmit={handleSaveSession} className="space-y-4">
+        <form
+          onSubmit={handleSaveSession}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
+              e.preventDefault();
+            }
+          }}
+          className="space-y-4"
+        >
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
               <label className="block text-xs font-semibold text-gray-400 mb-1">
@@ -966,7 +974,15 @@ export default function MeetingsEvents() {
         title="⚡ Start Quick Random Meeting"
         size="md"
       >
-        <form onSubmit={handleCreateRandomMeeting} className="space-y-4">
+        <form
+          onSubmit={handleCreateRandomMeeting}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
+              e.preventDefault();
+            }
+          }}
+          className="space-y-4"
+        >
           <div className="p-3 bg-purple-500/15 border border-purple-500/30 rounded-xl text-purple-200 text-xs flex items-center gap-2">
             <Zap className="h-4 w-4 text-purple-400 flex-shrink-0" />
             <span>

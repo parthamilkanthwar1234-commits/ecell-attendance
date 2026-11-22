@@ -814,7 +814,15 @@ export default function MarkAttendance() {
         title="Create New Attendance Session"
         size="lg"
       >
-        <form onSubmit={handleCreateSession} className="space-y-4">
+        <form
+          onSubmit={handleCreateSession}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
+              e.preventDefault();
+            }
+          }}
+          className="space-y-4"
+        >
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
               <label className="block text-xs font-semibold text-gray-400 mb-1">

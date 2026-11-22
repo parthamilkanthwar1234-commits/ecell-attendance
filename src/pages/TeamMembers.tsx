@@ -760,7 +760,15 @@ export default function TeamMembers() {
         }
         size="lg"
       >
-        <form onSubmit={handleSaveMember} className="space-y-4">
+        <form
+          onSubmit={handleSaveMember}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
+              e.preventDefault();
+            }
+          }}
+          className="space-y-4"
+        >
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-gray-400 mb-1">Full Name *</label>

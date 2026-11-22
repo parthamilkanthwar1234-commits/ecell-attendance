@@ -21,6 +21,7 @@ interface MoMViewerProps {
   session: AttendanceSession;
   canEdit: boolean;
   onEdit: () => void;
+  onUpdateTaskStatus?: (itemId: string, newStatus: 'Pending' | 'In Progress' | 'Completed') => Promise<void>;
 }
 
 export const MoMViewer: React.FC<MoMViewerProps> = ({
@@ -28,6 +29,7 @@ export const MoMViewer: React.FC<MoMViewerProps> = ({
   session,
   canEdit,
   onEdit,
+  onUpdateTaskStatus,
 }) => {
   const { addToast } = useApp();
 
@@ -357,8 +359,32 @@ Verified by: ${mom.verified_by || 'Domain Lead / Master Admin'}
                         {item.due_date}
                       </td>
                       <td className="p-2.5 text-center">
+                        {canEdit && onUpdateTaskStatus ? (
+                          <select
+                            value={item.status}
+                            onChange={(e) =>
+                              onUpdateTaskStatus(
+                                item.id,
+                                e.target.value as 'Pending' | 'In Progress' | 'Completed'
+                              )
+                            }
+                            className={`print:hidden text-[11px] px-2 py-0.5 rounded font-bold border cursor-pointer focus:outline-none transition-colors ${
+                              item.status === 'Completed'
+                                ? 'bg-status-success/20 text-status-success border-status-success/40'
+                                : item.status === 'In Progress'
+                                ? 'bg-blue-500/20 text-blue-400 border-blue-500/40'
+                                : 'bg-amber-500/20 text-status-late border-amber-500/40'
+                            }`}
+                          >
+                            <option value="Pending" className="bg-[#171c26] text-amber-400">Pending</option>
+                            <option value="In Progress" className="bg-[#171c26] text-blue-400">In Progress</option>
+                            <option value="Completed" className="bg-[#171c26] text-status-success">Completed</option>
+                          </select>
+                        ) : null}
                         <span
                           className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase print:border print:border-black ${
+                            canEdit && onUpdateTaskStatus ? 'hidden print:inline-block' : ''
+                          } ${
                             item.status === 'Completed'
                               ? 'bg-status-success/20 text-status-success print:bg-transparent print:text-black'
                               : item.status === 'In Progress'
