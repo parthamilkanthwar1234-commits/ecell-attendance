@@ -9,6 +9,7 @@ const badgeStyles: Record<AttendanceStatus, string> = {
   absent: 'bg-status-absent/15 text-status-absent',
   late: 'bg-status-late/15 text-status-late',
   excused: 'bg-status-excused/15 text-status-excused',
+  unmarked: 'bg-gray-500/15 text-gray-400 border border-gray-600/30',
 };
 
 const labelMap: Record<AttendanceStatus, string> = {
@@ -16,6 +17,7 @@ const labelMap: Record<AttendanceStatus, string> = {
   absent: 'Absent',
   late: 'Late',
   excused: 'Excused',
+  unmarked: 'Unmarked',
 };
 
 export default function StatusBadge({ status }: StatusBadgeProps) {

@@ -74,7 +74,7 @@ export default function AnalyticsReports() {
 
   // Overall Attendance Rate
   const overallStats = useMemo(() => {
-    const applicable = filteredRecords.filter((r) => r.status !== 'excused');
+    const applicable = filteredRecords.filter((r) => r.status !== 'excused' && r.status !== 'unmarked');
     const attended = applicable.filter((r) => r.status === 'present' || r.status === 'late').length;
     const pct = applicable.length > 0 ? Math.round((attended / applicable.length) * 100) : 0;
 
@@ -82,6 +82,7 @@ export default function AnalyticsReports() {
     const lateCount = filteredRecords.filter((r) => r.status === 'late').length;
     const absentCount = filteredRecords.filter((r) => r.status === 'absent').length;
     const excusedCount = filteredRecords.filter((r) => r.status === 'excused').length;
+    const unmarkedCount = filteredRecords.filter((r) => r.status === 'unmarked').length;
 
     return {
       pct,
@@ -91,6 +92,7 @@ export default function AnalyticsReports() {
       lateCount,
       absentCount,
       excusedCount,
+      unmarkedCount,
     };
   }, [filteredRecords, filteredSessions]);
 
@@ -112,7 +114,7 @@ export default function AnalyticsReports() {
     const memberDomainMap = new Map(members.map((m) => [m.id, m.department]));
 
     filteredRecords.forEach((r) => {
-      if (r.status === 'excused') return;
+      if (r.status === 'excused' || r.status === 'unmarked') return;
       const dept = memberDomainMap.get(r.member_id) || 'Unknown';
       const curr = map.get(dept) || { present: 0, late: 0, absent: 0, total: 0 };
       if (r.status === 'present') curr.present += 1;
@@ -141,7 +143,7 @@ export default function AnalyticsReports() {
     return members
       .map((member) => {
         const memRecs = filteredRecords.filter((r) => r.member_id === member.id);
-        const applicable = memRecs.filter((r) => r.status !== 'excused');
+        const applicable = memRecs.filter((r) => r.status !== 'excused' && r.status !== 'unmarked');
         const attended = applicable.filter((r) => r.status === 'present' || r.status === 'late').length;
         const pct = applicable.length > 0 ? Math.round((attended / applicable.length) * 100) : null;
 

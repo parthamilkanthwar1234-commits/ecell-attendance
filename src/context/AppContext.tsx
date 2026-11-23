@@ -1171,7 +1171,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const getMemberAttendancePercentage = useCallback(
     (memberId: string) => {
       const memberRecords = state.records.filter((r) => r.member_id === memberId);
-      const applicableRecords = memberRecords.filter((r) => r.status !== 'excused');
+      const applicableRecords = memberRecords.filter((r) => r.status !== 'excused' && r.status !== 'unmarked');
       if (applicableRecords.length === 0) return null;
       const attended = applicableRecords.filter(
         (r) => r.status === 'present' || r.status === 'late'
@@ -1203,7 +1203,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         filteredRecords = state.records.filter((r) => domainMemberIds.has(r.member_id));
       }
 
-      const applicable = filteredRecords.filter((r) => r.status !== 'excused');
+      const applicable = filteredRecords.filter((r) => r.status !== 'excused' && r.status !== 'unmarked');
       if (applicable.length === 0) return null;
       const attended = applicable.filter(
         (r) => r.status === 'present' || r.status === 'late'

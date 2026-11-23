@@ -47,7 +47,7 @@ export default function LeadershipOverview() {
   );
 
   const overallAvgAttendance = useMemo(() => {
-    const applicable = records.filter((r) => r.status !== 'excused');
+    const applicable = records.filter((r) => r.status !== 'excused' && r.status !== 'unmarked');
     if (applicable.length === 0) return 0;
     const attended = applicable.filter((r) => r.status === 'present' || r.status === 'late').length;
     return Math.round((attended / applicable.length) * 100);
@@ -94,7 +94,8 @@ export default function LeadershipOverview() {
         (r) =>
           domainMemberIds.has(r.member_id) &&
           conducted.some((s) => s.id === r.session_id) &&
-          r.status !== 'excused'
+          r.status !== 'excused' &&
+          r.status !== 'unmarked'
       );
 
       const attended = domainRecords.filter(

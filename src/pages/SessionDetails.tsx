@@ -146,8 +146,8 @@ export default function SessionDetails() {
         if (rec) {
           map[member.id] = { status: rec.status, remarks: rec.remarks || '' };
         } else {
-          // If no existing record exists yet, default to 'present', NEVER 'absent'
-          map[member.id] = { status: 'present', remarks: '' };
+          // If no existing record exists yet, default to 'unmarked'
+          map[member.id] = { status: 'unmarked', remarks: '' };
         }
       });
       setAttendanceMap(map);
@@ -236,7 +236,7 @@ export default function SessionDetails() {
     setAttendanceMap((prev) => ({
       ...prev,
       [memberId]: {
-        status: prev[memberId]?.status || 'present',
+        status: prev[memberId]?.status || 'unmarked',
         remarks,
       },
     }));
@@ -266,11 +266,12 @@ export default function SessionDetails() {
 
   // Live Statistics
   const stats = useMemo(() => {
-    const list = applicableMembers.map((m) => attendanceMap[m.id]?.status || 'present');
+    const list = applicableMembers.map((m) => attendanceMap[m.id]?.status || 'unmarked');
     const present = list.filter((s) => s === 'present').length;
     const late = list.filter((s) => s === 'late').length;
     const absent = list.filter((s) => s === 'absent').length;
     const excused = list.filter((s) => s === 'excused').length;
+    const unmarked = list.filter((s) => s === 'unmarked').length;
     const applicable = present + late + absent;
     const percentage = applicable > 0 ? Math.round(((present + late) / applicable) * 100) : 0;
 
@@ -280,6 +281,7 @@ export default function SessionDetails() {
       late,
       absent,
       excused,
+      unmarked,
       percentage,
     };
   }, [applicableMembers, attendanceMap]);
@@ -292,7 +294,7 @@ export default function SessionDetails() {
     const existingMap = new Map(existingRecords.map((r) => [r.member_id, r]));
 
     const newRecords: AttendanceRecord[] = applicableMembers.map((member) => {
-      const entry = attendanceMap[member.id] || { status: 'present', remarks: '' };
+      const entry = attendanceMap[member.id] || { status: 'unmarked', remarks: '' };
       const existingRec = existingMap.get(member.id);
       return {
         id: existingRec?.id || `rec-${session.id}-${member.id}`,
@@ -673,6 +675,12 @@ export default function SessionDetails() {
             {userCanManage && (
               <>
                 <button
+                  onClick={() => handleBulkSet('unmarked')}
+                  className="px-2.5 py-1.5 rounded-lg bg-gray-500/15 hover:bg-gray-500/25 text-gray-400 text-xs font-semibold cursor-pointer border border-gray-600/30"
+                >
+                  Reset Unmarked
+                </button>
+                <button
                   onClick={() => handleBulkSet('present')}
                   className="px-2.5 py-1.5 rounded-lg bg-status-success/15 hover:bg-status-success/25 text-status-success text-xs font-semibold cursor-pointer border border-status-success/30"
                 >
@@ -729,10 +737,14 @@ export default function SessionDetails() {
         )}
 
         {/* Attendance Statistics Summary Bar */}
-        <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 text-center">
+        <div className="grid grid-cols-2 sm:grid-cols-7 gap-2 text-center">
           <div className="p-3 bg-dark-bg rounded-lg border border-dark-border">
             <span className="text-[11px] text-gray-400 block">Expected</span>
             <span className="text-lg font-bold text-white">{stats.totalExpected}</span>
+          </div>
+          <div className="p-3 bg-dark-bg rounded-lg border border-gray-600/30">
+            <span className="text-[11px] text-gray-400 block">Unmarked</span>
+            <span className="text-lg font-bold text-gray-400">{stats.unmarked}</span>
           </div>
           <div className="p-3 bg-dark-bg rounded-lg border border-status-success/30">
             <span className="text-[11px] text-status-success block">Present</span>
@@ -797,7 +809,7 @@ export default function SessionDetails() {
                 </tr>
               ) : (
                 applicableMembers.map((member, index) => {
-                  const currentStatus = attendanceMap[member.id]?.status || 'present';
+                  const currentStatus = attendanceMap[member.id]?.status || 'unmarked';
                   const currentRemarks = attendanceMap[member.id]?.remarks || '';
                   const existingRec = existingRecords.find((r) => r.member_id === member.id);
                   const scanTime = extractScanTime(existingRec);
@@ -838,6 +850,17 @@ export default function SessionDetails() {
                       <td className="p-3">
                         {userCanManage ? (
                           <div className="inline-flex rounded-lg p-0.5 bg-dark-bg border border-dark-border gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleStatusChange(member.id, 'unmarked')}
+                              className={`px-2 py-1 rounded text-[10px] font-bold cursor-pointer transition-all ${
+                                currentStatus === 'unmarked'
+                                  ? 'bg-gray-600 text-white'
+                                  : 'text-gray-400 hover:text-white'
+                              }`}
+                            >
+                              Unmarked
+                            </button>
                             <button
                               type="button"
                               onClick={() => handleStatusChange(member.id, 'present')}

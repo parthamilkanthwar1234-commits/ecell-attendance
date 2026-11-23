@@ -15,6 +15,7 @@ export function getStatusColor(status: AttendanceStatus): string {
     case 'absent': return 'text-status-absent';
     case 'late': return 'text-status-late';
     case 'excused': return 'text-status-excused';
+    case 'unmarked': return 'text-gray-400';
   }
 }
 
@@ -24,15 +25,17 @@ export function getStatusBgColor(status: AttendanceStatus): string {
     case 'absent': return 'bg-status-absent/15 text-status-absent';
     case 'late': return 'bg-status-late/15 text-status-late';
     case 'excused': return 'bg-status-excused/15 text-status-excused';
+    case 'unmarked': return 'bg-gray-500/15 text-gray-400 border border-gray-600/30';
   }
 }
 
 export function getStatusLabel(status: AttendanceStatus): string {
+  if (status === 'unmarked') return 'Unmarked';
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
 export function calculateAttendancePercentage(records: AttendanceRecord[]): number | null {
-  const applicable = records.filter(r => r.status !== 'excused');
+  const applicable = records.filter(r => r.status !== 'excused' && r.status !== 'unmarked');
   if (applicable.length === 0) return null;
   const attended = applicable.filter(r => r.status === 'present' || r.status === 'late').length;
   return Math.round((attended / applicable.length) * 100);

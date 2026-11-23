@@ -34,7 +34,7 @@ const EVENT_CATEGORIES: EventCategory[] = [
   'Other',
 ];
 
-const STATUS_OPTIONS: AttendanceStatus[] = ['present', 'absent', 'late', 'excused'];
+const STATUS_OPTIONS: AttendanceStatus[] = ['unmarked', 'present', 'absent', 'late', 'excused'];
 
 export default function AttendanceHistory() {
   const { state, addToast } = useApp();

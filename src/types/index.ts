@@ -30,7 +30,7 @@ export type SessionType =
 
 export type SessionStatus = 'Scheduled' | 'In Progress' | 'Completed' | 'Cancelled';
 
-export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused';
+export type AttendanceStatus = 'present' | 'absent' | 'late' | 'excused' | 'unmarked';
 
 export interface ActionItem {
   id: string;

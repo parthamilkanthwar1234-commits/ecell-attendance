@@ -154,7 +154,7 @@ export default function Dashboard() {
       const sessionRecords = records.filter(
         (r) => r.session_id === session.id,
       );
-      const applicable = sessionRecords.filter((r) => r.status !== 'excused');
+      const applicable = sessionRecords.filter((r) => r.status !== 'excused' && r.status !== 'unmarked');
       const attended = applicable.filter(
         (r) => r.status === 'present' || r.status === 'late',
       ).length;
@@ -178,7 +178,7 @@ export default function Dashboard() {
       const sessionRecords = records.filter(
         (r) => r.session_id === session.id,
       );
-      const applicable = sessionRecords.filter((r) => r.status !== 'excused');
+      const applicable = sessionRecords.filter((r) => r.status !== 'excused' && r.status !== 'unmarked');
       const attended = applicable.filter(
         (r) => r.status === 'present' || r.status === 'late',
       ).length;

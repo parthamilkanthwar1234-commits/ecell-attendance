@@ -203,7 +203,7 @@ export default function MarkAttendance() {
           };
         } else {
           newMap[member.id] = {
-            status: 'present',
+            status: 'unmarked',
             remarks: '',
           };
         }
@@ -236,7 +236,7 @@ export default function MarkAttendance() {
     setAttendanceMap((prev) => ({
       ...prev,
       [memberId]: {
-        status: prev[memberId]?.status || 'present',
+        status: prev[memberId]?.status || 'unmarked',
         remarks,
       },
     }));
@@ -265,11 +265,12 @@ export default function MarkAttendance() {
 
   // Live Stats
   const stats = useMemo(() => {
-    const values = applicableMembers.map((m) => attendanceMap[m.id]?.status || 'present');
+    const values = applicableMembers.map((m) => attendanceMap[m.id]?.status || 'unmarked');
     const present = values.filter((v) => v === 'present').length;
     const absent = values.filter((v) => v === 'absent').length;
     const late = values.filter((v) => v === 'late').length;
     const excused = values.filter((v) => v === 'excused').length;
+    const unmarked = values.filter((v) => v === 'unmarked').length;
     const applicable = present + absent + late;
     const percentage = applicable > 0 ? Math.round(((present + late) / applicable) * 100) : 0;
 
@@ -278,6 +279,7 @@ export default function MarkAttendance() {
       absent,
       late,
       excused,
+      unmarked,
       totalExpected: applicableMembers.length,
       percentage,
     };
@@ -320,7 +322,7 @@ export default function MarkAttendance() {
     const existingMap = new Map(existingRecords.map((r) => [r.member_id, r]));
 
     const newRecords: AttendanceRecord[] = applicableMembers.map((member) => {
-      const entry = attendanceMap[member.id] || { status: 'present', remarks: '' };
+      const entry = attendanceMap[member.id] || { status: 'unmarked', remarks: '' };
       const existingRec = existingMap.get(member.id);
       return {
         id: existingRec?.id || `rec-${currentSession.id}-${member.id}`,
@@ -553,6 +555,9 @@ export default function MarkAttendance() {
       {/* Live Stats Bar & Quick Actions */}
       <div className="bg-dark-card border border-dark-border rounded-xl p-4 flex flex-col lg:flex-row items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-500/10 border border-gray-600/20 text-gray-400 text-xs font-semibold">
+            <span>Unmarked: {stats.unmarked}</span>
+          </div>
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-status-success/10 border border-status-success/20 text-status-success text-xs font-semibold">
             <CheckCircle2 className="h-4 w-4" />
             <span>Present: {stats.present}</span>
@@ -576,6 +581,12 @@ export default function MarkAttendance() {
 
         {userCanManage && (
           <div className="flex items-center gap-2 w-full lg:w-auto justify-end">
+            <button
+              onClick={() => handleMarkAll('unmarked')}
+              className="px-3 py-1.5 rounded-lg bg-gray-500/15 hover:bg-gray-500/25 text-gray-400 border border-gray-600/30 text-xs font-medium cursor-pointer"
+            >
+              Reset to Unmarked
+            </button>
             <button
               onClick={() => handleMarkAll('present')}
               className="px-3 py-1.5 rounded-lg bg-status-success/15 hover:bg-status-success/25 text-status-success border border-status-success/30 text-xs font-medium cursor-pointer"
@@ -626,7 +637,7 @@ export default function MarkAttendance() {
                 </tr>
               ) : (
                 applicableMembers.map((member, index) => {
-                  const currentStatus = attendanceMap[member.id]?.status || 'present';
+                  const currentStatus = attendanceMap[member.id]?.status || 'unmarked';
                   const currentRemarks = attendanceMap[member.id]?.remarks || '';
 
                   return (
@@ -684,6 +695,17 @@ export default function MarkAttendance() {
                       <td className="px-4 py-3.5">
                         {userCanManage ? (
                           <div className="inline-flex rounded-lg p-1 bg-dark-bg border border-dark-border gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleStatusChange(member.id, 'unmarked')}
+                              className={`px-3 py-1 rounded-md text-xs font-semibold cursor-pointer ${
+                                currentStatus === 'unmarked'
+                                  ? 'bg-gray-600 text-white'
+                                  : 'text-gray-400 hover:text-white'
+                              }`}
+                            >
+                              Unmarked
+                            </button>
                             <button
                               type="button"
                               onClick={() => handleStatusChange(member.id, 'present')}

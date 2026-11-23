@@ -208,14 +208,14 @@ export default function CheckIn() {
         : `Self-checkin via Meeting QR [Scanned at ${scanTimeFormatted}]`;
 
       const newRecord: AttendanceRecord = {
-        id: `rec-${session.id}-${memberId}`,
+        id: existingRec?.id || `rec-${session.id}-${memberId}`,
         session_id: session.id,
         member_id: memberId,
         status: 'present',
         remarks: qrRemark,
         marked_by: currentUser.username || currentUser.email || 'qr-self',
         marked_by_name: currentUser.full_name || 'Self Check-in',
-        created_at: scanIso,
+        created_at: existingRec?.created_at || scanIso,
         updated_at: scanIso,
       };
 
