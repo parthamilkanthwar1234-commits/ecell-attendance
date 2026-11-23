@@ -29,7 +29,7 @@ import {
   ECellDomain,
   SessionStatus
 } from '../types';
-import { formatDate, generateId, getStatusBgColor, getStatusLabel } from '../lib/utils';
+import { formatDate, generateId, getStatusBgColor, getStatusLabel, extractScanTime } from '../lib/utils';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import Modal from '../components/ui/Modal';
 import ConfirmDialog from '../components/ui/ConfirmDialog';
@@ -316,17 +316,21 @@ export default function MarkAttendance() {
     if (!currentSession) return;
     setIsSaving(true);
 
+    const existingRecords = state.records.filter((r) => r.session_id === currentSession.id);
+    const existingMap = new Map(existingRecords.map((r) => [r.member_id, r]));
+
     const newRecords: AttendanceRecord[] = applicableMembers.map((member) => {
       const entry = attendanceMap[member.id] || { status: 'present', remarks: '' };
+      const existingRec = existingMap.get(member.id);
       return {
-        id: `rec-${currentSession.id}-${member.id}`,
+        id: existingRec?.id || `rec-${currentSession.id}-${member.id}`,
         session_id: currentSession.id,
         member_id: member.id,
         status: entry.status,
         remarks: entry.remarks,
-        marked_by: user?.username || 'admin',
-        marked_by_name: user?.full_name || 'Admin',
-        created_at: currentSession.created_at,
+        marked_by: existingRec?.marked_by || user?.username || 'admin',
+        marked_by_name: existingRec?.marked_by_name || user?.full_name || 'Admin',
+        created_at: existingRec?.created_at || new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
     });
@@ -637,14 +641,32 @@ export default function MarkAttendance() {
                             {member.name.charAt(0)}
                           </div>
                           <div>
-                            <div className="font-semibold text-white flex items-center gap-2">
+                            <div className="font-semibold text-white flex items-center gap-2 flex-wrap">
                               <span>{member.name}</span>
-                              {attendanceMap[member.id]?.remarks?.toLowerCase().includes('qr') && (
-                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1" title="Marked via Meeting QR Scan">
-                                  <QrCode className="h-2.5 w-2.5" />
-                                  <span>QR Check-in</span>
-                                </span>
-                              )}
+                              {(() => {
+                                const existingRec = state.records.find(
+                                  (r) => r.session_id === currentSession.id && r.member_id === member.id
+                                );
+                                const scanTime = extractScanTime(existingRec);
+                                const isQR = Boolean(
+                                  scanTime ||
+                                  attendanceMap[member.id]?.remarks?.toLowerCase().includes('qr') ||
+                                  existingRec?.marked_by === 'qr-self'
+                                );
+                                if (!isQR) return null;
+                                return (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1" title="Marked via Meeting QR Scan">
+                                    <QrCode className="h-2.5 w-2.5" />
+                                    <span>QR Check-in</span>
+                                    {scanTime && (
+                                      <span className="font-mono text-cyan-300 bg-cyan-950/40 px-1 py-0.2 rounded border border-cyan-500/20 flex items-center gap-0.5" title={`Exact scan time: ${scanTime}`}>
+                                        <Clock className="h-2 w-2 text-cyan-400" />
+                                        <span>{scanTime}</span>
+                                      </span>
+                                    )}
+                                  </span>
+                                );
+                              })()}
                             </div>
                             <div className="text-xs text-gray-500">
                               {member.member_id} · {member.role}

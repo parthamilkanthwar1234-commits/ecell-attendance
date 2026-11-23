@@ -342,7 +342,12 @@ function appReducer(state: AppState, action: Action): AppState {
         }
       });
 
-      const remainingRecords = state.records.filter((r) => r.session_id !== sessionId);
+      const newRecordIds = new Set(newRecords.map((r) => r.id));
+      const newMemberIds = new Set(newRecords.map((r) => r.member_id));
+      // Keep records from other sessions, plus existing session records not in newRecords (e.g. for single QR check-ins)
+      const remainingRecords = state.records.filter(
+        (r) => r.session_id !== sessionId || (!newRecordIds.has(r.id) && !newMemberIds.has(r.member_id))
+      );
 
       return {
         ...state,

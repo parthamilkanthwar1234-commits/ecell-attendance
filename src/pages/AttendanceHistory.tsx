@@ -13,11 +13,12 @@ import {
   ChevronRight,
   User,
   Layers,
-  FileSpreadsheet
+  FileSpreadsheet,
+  QrCode,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { AttendanceStatus, EventCategory } from '../types';
-import { formatDate, getStatusBgColor, getStatusLabel, exportToCSV } from '../lib/utils';
+import { formatDate, getStatusBgColor, getStatusLabel, exportToCSV, extractScanTime } from '../lib/utils';
 import Modal from '../components/ui/Modal';
 
 const EVENT_CATEGORIES: EventCategory[] = [
@@ -151,17 +152,23 @@ export default function AttendanceHistory() {
       return;
     }
 
-    const exportData = filteredRecords.map((r) => ({
-      'Session Date': r.session?.date || '',
-      'Session Name': r.session?.name || '',
-      Category: r.session?.category || '',
-      'Member ID': r.member?.member_id || '',
-      'Member Name': r.member?.name || '',
-      Department: r.member?.department || '',
-      Role: r.member?.role || '',
-      Status: r.status.toUpperCase(),
-      Remarks: r.remarks || '',
-    }));
+    const exportData = filteredRecords.map((r) => {
+      const scanTime = extractScanTime(r);
+      const isQR = Boolean(scanTime || r.remarks?.toLowerCase().includes('qr') || r.marked_by === 'qr-self');
+      return {
+        'Session Date': r.session?.date || '',
+        'Session Name': r.session?.name || '',
+        Category: r.session?.category || '',
+        'Member ID': r.member?.member_id || '',
+        'Member Name': r.member?.name || '',
+        Department: r.member?.department || '',
+        Role: r.member?.role || '',
+        Status: r.status.toUpperCase(),
+        'Check-in Method': isQR ? 'Live QR Scan' : 'Manual Attendance',
+        'Scan Timestamp': scanTime || (r.status === 'present' ? 'Manual Mark' : '-'),
+        Remarks: r.remarks || '',
+      };
+    });
 
     exportToCSV(exportData, 'ecell_attendance_history');
     addToast({
@@ -422,6 +429,25 @@ export default function AttendanceHistory() {
                         <td className="px-4 py-3">
                           <div className="font-medium text-white">{r.member?.name}</div>
                           <div className="text-[10px] text-gray-500">{r.member?.member_id}</div>
+                          {(() => {
+                            const scanTime = extractScanTime(r);
+                            const isQR = Boolean(scanTime || r.remarks?.toLowerCase().includes('qr') || r.marked_by === 'qr-self');
+                            if (!isQR) return null;
+                            return (
+                              <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1" title="Marked via Meeting QR Scan">
+                                  <QrCode className="h-2.5 w-2.5" />
+                                  <span>QR Check-in</span>
+                                </span>
+                                {scanTime && (
+                                  <span className="text-[10px] font-mono font-bold text-cyan-300 bg-cyan-950/40 px-1.5 py-0.5 rounded border border-cyan-500/30 flex items-center gap-1" title={`Exact scan timestamp: ${scanTime}`}>
+                                    <Clock className="h-2.5 w-2.5 text-cyan-400" />
+                                    <span>{scanTime}</span>
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="px-4 py-3 text-gray-400">{r.member?.department}</td>
                         <td className="px-4 py-3">

@@ -18,6 +18,7 @@ import {
 import { useApp } from '../context/AppContext';
 import { AttendanceRecord, AttendanceSession, Member } from '../types';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { extractScanTime } from '../lib/utils';
 
 // Helper to parse 24h ('16:00') and 12h ('04:00 PM')
 function parseSessionDateTime(dateStr: string, timeStr: string): Date | null {
@@ -192,17 +193,30 @@ export default function CheckIn() {
         return;
       }
 
-      // 4. Create & Commit Attendance Record
+      // 4. Create & Commit Attendance Record with Exact QR Scan Timestamp
+      const now = new Date();
+      const scanIso = now.toISOString();
+      const scanTimeFormatted = now.toLocaleTimeString('en-IN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+      });
+
+      const qrRemark = isRandomMeeting
+        ? `Self-checkin via Random Meeting QR ⚡ [Scanned at ${scanTimeFormatted}]`
+        : `Self-checkin via Meeting QR [Scanned at ${scanTimeFormatted}]`;
+
       const newRecord: AttendanceRecord = {
         id: `rec-${session.id}-${memberId}`,
         session_id: session.id,
         member_id: memberId,
         status: 'present',
-        remarks: isRandomMeeting ? 'Self-checkin via Random Meeting QR ⚡' : 'Self-checkin via Meeting QR',
+        remarks: qrRemark,
         marked_by: currentUser.username || currentUser.email || 'qr-self',
         marked_by_name: currentUser.full_name || 'Self Check-in',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        created_at: scanIso,
+        updated_at: scanIso,
       };
 
       try {
@@ -215,7 +229,7 @@ export default function CheckIn() {
           type: 'SAVE_ATTENDANCE',
           payload: {
             records: [newRecord],
-            auditReason: `QR Check-In by ${currentUser.full_name}`,
+            auditReason: `QR Check-In by ${currentUser.full_name} [Scanned at ${scanTimeFormatted}]`,
           },
         });
 
@@ -318,6 +332,14 @@ export default function CheckIn() {
               <p className="text-xs text-gray-400 mt-1">
                 Your attendance has been officially verified and cloud-synced to the meeting roster.
               </p>
+              {checkedRecord && (
+                <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-status-success/10 border border-status-success/30 text-xs text-status-success font-semibold">
+                  <Clock className="h-4 w-4" />
+                  <span>
+                    Scanned at: <strong className="font-mono">{extractScanTime(checkedRecord) || 'Confirmed'}</strong>
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -334,6 +356,14 @@ export default function CheckIn() {
               </span>
               <h2 className="text-xl font-extrabold text-white mt-1">Already Checked In</h2>
               <p className="text-xs text-gray-400 mt-1">{statusMessage}</p>
+              {checkedRecord && (
+                <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-blue-500/10 border border-blue-500/30 text-xs text-blue-300 font-semibold">
+                  <Clock className="h-4 w-4" />
+                  <span>
+                    Scanned at: <strong className="font-mono">{extractScanTime(checkedRecord) || 'Previously Recorded'}</strong>
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         )}

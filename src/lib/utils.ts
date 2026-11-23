@@ -42,6 +42,44 @@ export function generateId(prefix: string = 'id'): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
+export function extractScanTime(record?: AttendanceRecord | null): string | null {
+  if (!record) return null;
+
+  // 1. Check if remarks contains [Scanned at ...]
+  if (record.remarks) {
+    const match = record.remarks.match(/\[Scanned at ([^\]]+)\]/i);
+    if (match && match[1]) return match[1].trim();
+
+    // Or check if remarks has a time pattern like (12:30 PM) or at 12:30:45 PM
+    const altMatch = record.remarks.match(/(?:at|@)\s*(\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM|am|pm))/i);
+    if (altMatch && altMatch[1]) return altMatch[1].trim();
+  }
+
+  // 2. If it was marked via QR check-in and has created_at
+  const isQR =
+    record.marked_by === 'qr-self' ||
+    record.marked_by_name === 'Self Check-in' ||
+    (record.remarks && record.remarks.toLowerCase().includes('qr'));
+
+  if (isQR && record.created_at) {
+    try {
+      const d = new Date(record.created_at);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleTimeString('en-IN', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: true,
+        });
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return null;
+}
+
 export function exportToCSV(data: Record<string, unknown>[], filename: string): void {
   if (data.length === 0) return;
 

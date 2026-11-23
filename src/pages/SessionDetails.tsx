@@ -37,7 +37,7 @@ import {
   ActionItem,
   SessionStatus
 } from '../types';
-import { formatDate, getStatusBgColor, getStatusLabel, exportToCSV } from '../lib/utils';
+import { formatDate, getStatusBgColor, getStatusLabel, exportToCSV, extractScanTime } from '../lib/utils';
 import { MoMViewer } from '../components/mom/MoMViewer';
 import { MoMEditorModal } from '../components/mom/MoMEditorModal';
 import { SessionQRModal } from '../components/qr/SessionQRModal';
@@ -289,17 +289,20 @@ export default function SessionDetails() {
     if (!session) return;
     setIsSavingAttendance(true);
 
+    const existingMap = new Map(existingRecords.map((r) => [r.member_id, r]));
+
     const newRecords: AttendanceRecord[] = applicableMembers.map((member) => {
       const entry = attendanceMap[member.id] || { status: 'present', remarks: '' };
+      const existingRec = existingMap.get(member.id);
       return {
-        id: `rec-${session.id}-${member.id}`,
+        id: existingRec?.id || `rec-${session.id}-${member.id}`,
         session_id: session.id,
         member_id: member.id,
         status: entry.status,
         remarks: entry.remarks,
-        marked_by: state.auth.user?.username || 'admin',
-        marked_by_name: state.auth.user?.full_name || 'Admin Lead',
-        created_at: session.created_at,
+        marked_by: existingRec?.marked_by || state.auth.user?.username || 'admin',
+        marked_by_name: existingRec?.marked_by_name || state.auth.user?.full_name || 'Admin Lead',
+        created_at: existingRec?.created_at || new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
     });
@@ -623,21 +626,31 @@ export default function SessionDetails() {
 
             <button
               onClick={() => {
-                const data = applicableMembers.map((m, idx) => ({
-                  '#': idx + 1,
-                  'Member ID': m.member_id,
-                  'Name': m.name,
-                  'Domain': m.department,
-                  'Status': (attendanceMap[m.id]?.status || 'absent').toUpperCase(),
-                  'Remarks': attendanceMap[m.id]?.remarks || '',
-                  'Session Name': session.name,
-                  'Session Date': session.date,
-                }));
+                const existingMap = new Map(existingRecords.map((r) => [r.member_id, r]));
+                const data = applicableMembers.map((m, idx) => {
+                  const entry = attendanceMap[m.id];
+                  const existingRec = existingMap.get(m.id);
+                  const scanTime = extractScanTime(existingRec);
+                  const isQR = Boolean(scanTime || entry?.remarks?.toLowerCase().includes('qr') || existingRec?.marked_by === 'qr-self');
+                  return {
+                    'SR NO': idx + 1,
+                    'MEMBER NAME': m.name,
+                    'MEMBER ID': m.member_id,
+                    DEPARTMENT: m.department,
+                    ROLE: m.role,
+                    STATUS: (entry?.status || 'present').toUpperCase(),
+                    'CHECK-IN METHOD': isQR ? 'Live QR Scan' : 'Manual Attendance',
+                    'SCAN TIMESTAMP': scanTime || (entry?.status === 'present' ? 'Manual Mark' : '-'),
+                    REMARKS: entry?.remarks || '',
+                    'SESSION NAME': session.name,
+                    'SESSION DATE': session.date,
+                  };
+                });
                 exportToCSV(data, `${session.name.replace(/\s+/g, '_')}_attendance`);
                 addToast({
                   type: 'success',
                   title: 'Attendance Exported',
-                  message: `Exported attendance sheet for ${session.name}.`,
+                  message: `Exported attendance sheet with scan timestamps for ${session.name}.`,
                 });
               }}
               className="px-2.5 py-1.5 rounded-lg bg-dark-bg hover:bg-dark-hover text-gray-300 text-xs font-semibold cursor-pointer border border-dark-border inline-flex items-center gap-1.5"
@@ -786,17 +799,36 @@ export default function SessionDetails() {
                 applicableMembers.map((member, index) => {
                   const currentStatus = attendanceMap[member.id]?.status || 'present';
                   const currentRemarks = attendanceMap[member.id]?.remarks || '';
+                  const existingRec = existingRecords.find((r) => r.member_id === member.id);
+                  const scanTime = extractScanTime(existingRec);
+                  const isQRScan = Boolean(
+                    scanTime ||
+                    currentRemarks.toLowerCase().includes('qr') ||
+                    existingRec?.marked_by === 'qr-self'
+                  );
 
                   return (
                     <tr key={member.id} className="hover:bg-dark-hover/40 transition-colors">
                       <td className="p-3 text-center text-gray-500 font-medium">{index + 1}</td>
                       <td className="p-3 font-semibold text-white">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span>{member.name}</span>
-                          {currentRemarks.toLowerCase().includes('qr') && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1" title="Verified via Live Meeting QR Scan">
+                          {isQRScan && (
+                            <span
+                              className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1"
+                              title="Verified via Live Meeting QR Scan"
+                            >
                               <QrCode className="h-2.5 w-2.5" />
                               <span>QR Check-in</span>
+                            </span>
+                          )}
+                          {scanTime && (
+                            <span
+                              className="text-[10px] font-mono font-bold text-cyan-300 bg-cyan-950/40 px-1.5 py-0.5 rounded border border-cyan-500/30 flex items-center gap-1"
+                              title={`Scanned QR Code at ${scanTime}`}
+                            >
+                              <Clock className="h-2.5 w-2.5 text-cyan-400" />
+                              <span>{scanTime}</span>
                             </span>
                           )}
                         </div>

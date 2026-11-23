@@ -21,6 +21,7 @@ import Modal from '../ui/Modal';
 import { AttendanceSession, AttendanceRecord } from '../../types';
 import { useApp } from '../../context/AppContext';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
+import { extractScanTime } from '../../lib/utils';
 
 interface SessionQRModalProps {
   isOpen: boolean;
@@ -104,6 +105,20 @@ export const SessionQRModal: React.FC<SessionQRModalProps> = ({
 
   const totalPresentCount = useMemo(() => {
     return sessionRecords.filter((r) => r.status === 'present' || r.status === 'late').length;
+  }, [sessionRecords]);
+
+  const memberMap = useMemo(() => {
+    return new Map(state.members.map((m) => [m.id, m]));
+  }, [state.members]);
+
+  const latestQRScans = useMemo(() => {
+    return sessionRecords
+      .filter(
+        (r) =>
+          r.status === 'present' &&
+          (r.remarks?.toLowerCase().includes('qr') || r.marked_by === 'qr-self' || extractScanTime(r))
+      )
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   }, [sessionRecords]);
 
   // Auto-poll Supabase while QR modal is open so lead sees live attendee check-ins in real time
@@ -315,6 +330,41 @@ export const SessionQRModal: React.FC<SessionQRModalProps> = ({
           </div>
         )}
       </div>
+
+      {/* Live Scanned Attendees List with Timestamps */}
+      {latestQRScans.length > 0 && (
+        <div className="p-3.5 bg-dark-bg/90 border border-dark-border rounded-xl space-y-2">
+          <div className="flex items-center justify-between text-xs font-bold text-gray-300">
+            <span className="flex items-center gap-1.5 text-accent-light">
+              <QrCode className="h-3.5 w-3.5" />
+              <span>Live Scanned Attendees ({latestQRScans.length})</span>
+            </span>
+            <span className="text-[10px] text-gray-500 font-normal">Real-time scan logs</span>
+          </div>
+
+          <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1 divide-y divide-dark-border/50">
+            {latestQRScans.map((rec) => {
+              const mem = memberMap.get(rec.member_id);
+              const scanTime = extractScanTime(rec);
+              return (
+                <div key={rec.id} className="pt-1.5 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-status-success shrink-0" />
+                    <span className="font-semibold text-white">{mem?.name || rec.marked_by_name || 'Member'}</span>
+                    <span className="text-[10px] text-gray-500">({mem?.department || session.domain})</span>
+                  </div>
+                  {scanTime && (
+                    <span className="text-[10px] font-mono font-bold text-cyan-300 bg-cyan-950/40 px-2 py-0.5 rounded border border-cyan-500/30 flex items-center gap-1">
+                      <Clock className="h-2.5 w-2.5 text-cyan-400" />
+                      <span>{scanTime}</span>
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Domain Security Notice */}
       <div className="p-3.5 bg-dark-bg border border-dark-border rounded-xl flex items-start gap-3">
